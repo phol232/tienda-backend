@@ -66,7 +66,6 @@ class CategoriaController extends Controller
         $categoria->cat_color = $request->cat_color;
 
         if ($request->hasFile('imagen')) {
-            // Borra imagen anterior si existe
             if ($categoria->cat_imagen && file_exists(public_path($categoria->cat_imagen))) {
                 unlink(public_path($categoria->cat_imagen));
             }

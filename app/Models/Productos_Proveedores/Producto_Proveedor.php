@@ -1,10 +1,9 @@
 <?php
-
 namespace App\Models\Productos_Proveedores;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 
-class Producto_Proveedor extends Model
+class Producto_Proveedor extends Pivot
 {
     protected $table = 'Producto_Proveedor';
     protected $primaryKey = 'prod_prov_id';
@@ -12,13 +11,14 @@ class Producto_Proveedor extends Model
     protected $keyType = 'string';
     public $timestamps = false;
 
-    public function producto()
-    {
-        return $this->belongsTo(Productos::class, 'prod_id', 'pro_id');
-    }
-
-    public function proveedor()
-    {
-        return $this->belongsTo(Proveedores::class, 'prov_id', 'prov_id');
-    }
+    protected $fillable = [
+        'prod_prov_id',
+        'prod_id',
+        'prov_id',
+        'precio_proveedor',
+        'fecha_inicio_suministro',
+        'fecha_fin_suministro',
+        'notas',
+        'estado',
+    ];
 }
