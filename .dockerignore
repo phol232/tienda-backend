@@ -1,0 +1,10 @@
+# .dockerignore
+vendor
+node_modules
+
+# Ignora el enlace simbólico en el build
+public/storage
+
+
+.git
+.DS_Store
