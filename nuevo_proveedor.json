@@ -1,0 +1,13 @@
+{
+    "prov_nombre":    "ALICORP S.A.",
+    "prov_contacto":  "José Álvarez",
+    "prov_telefono":  "+51 912 345 678",
+    "prov_email":     "ventas@insumosperu.pe",
+    "prov_direccion": "Calle Falsa 123",
+    "prov_rfc":       "INS123456789",
+    "prov_notas":     "Nuevo proveedor de material de oficina",
+    "prov_sitio_web": "https://insumosperu.pe",
+    "categorias": [
+        "Productos"
+    ]
+}

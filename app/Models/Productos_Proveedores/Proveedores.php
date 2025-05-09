@@ -18,7 +18,14 @@ class Proveedores extends Model
     protected $fillable = [
         'prov_id',
         'prov_nombre',
-        // …otros campos que tú uses
+        'prov_contacto',
+        'prov_telefono',
+        'prov_email',
+        'prov_direccion',
+        'prov_rfc',
+        'prov_notas',
+        'prov_sitio_web',
+        'prov_estado'
     ];
 
     public function productos(): BelongsToMany
