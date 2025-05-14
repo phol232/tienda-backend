@@ -1,0 +1,20 @@
+{
+    "tipmov_nombre": "Entrada",
+    "mov_fecha": "2025-05-14 23:00:00",
+    "mov_referencia": "Compra de prueba",
+    "mov_notas": "Ingreso inicial de stock",
+    "usr_id": "72890842",
+    "prov_nombre": "Insumos Perú S.A",
+    "productos": [
+        {
+            "prod_nombre": "Papaya",
+            "movprod_cantidad": 10,
+            "movprod_costo_unitario": 5.25
+        },
+        {
+            "prod_nombre": "Chocman",
+            "movprod_cantidad": 5,
+            "movprod_costo_unitario": 3.50
+        }
+    ]
+}

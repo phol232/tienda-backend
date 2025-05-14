@@ -14,9 +14,6 @@ use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
-    /**
-     * Registra un nuevo usuario y su perfil.
-     */
     public function register(Request $request)
     {
         $request->validate([
@@ -131,19 +128,6 @@ class AuthController extends Controller
     }
 
     /**
-     * Revoca el token actual (logout).
-     */
-    public function logout(Request $request)
-    {
-        $request->user()->currentAccessToken()->delete();
-
-        return response()->json([
-            'status'  => true,
-            'message' => 'Sesión cerrada correctamente',
-        ], 200);
-    }
-
-    /**
      * Redirige al login de Google.
      */
     public function redirectToGoogle()
@@ -154,44 +138,68 @@ class AuthController extends Controller
     }
 
     /**
-     * Maneja el callback de Google, crea/recupera usuario y redirige al frontend con el token.
+     * Maneja el callback de Google.
      */
     public function handleGoogleCallback()
     {
-        $googleUser = Socialite::driver('google')
-            ->stateless()
-            ->user();
+        try {
+            $googleUser = Socialite::driver('google')->stateless()->user();
 
-        DB::beginTransaction();
+            // Busca o crea usuario
+            $usuario = Usuarios::firstOrCreate(
+                ['usr_email' => $googleUser->getEmail()],
+                [
+                    'usr_id'       => Usuarios::max('usr_id')
+                        ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), '0', STR_PAD_LEFT)
+                        : '1',
+                    'usr_user'     => explode('@', $googleUser->getEmail())[0],
+                    'usr_password' => Hash::make(Str::random(16)),
+                    'usr_estado'   => 'Activo',
+                ]
+            );
 
-        $usuario = Usuarios::where('usr_email', $googleUser->getEmail())->first();
-        if (! $usuario) {
-            $last = Usuarios::max('usr_id');
-            $num  = $last ? ((int)$last + 1) : 1;
-            $len  = $last ? strlen($last) : 8;
-            $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+            // Perfil
+            $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
+            $nameParts = explode(' ', $googleUser->getName() ?? '');
+            $perfil->usrp_id       = $perfil->usrp_id ?? (string) Str::uuid();
+            $perfil->usrp_nombre   = $nameParts[0] ?? '';
+            $perfil->usrp_apellido = count($nameParts)>1 ? implode(' ', array_slice($nameParts,1)) : '';
+            $perfil->usrp_imagen   = $googleUser->getAvatar();
+            $perfil->save();
 
-            $usuario = Usuarios::create([
-                'usr_id'       => $uid,
-                'usr_email'    => $googleUser->getEmail(),
-                'usr_user'     => $googleUser->getNickname() ?? 'user'.$uid,
-                'usr_password' => Hash::make(Str::random(16)),
-                'usr_estado'   => 'Activo',
-            ]);
+            $token = $usuario->createToken('auth_token')->plainTextToken;
+            $frontend = env('FRONTEND_URL', 'http://localhost:5000');
+            return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
 
-            UsuariosPerfil::create([
-                'usrp_id'       => $uid,
-                'usr_id'        => $uid,
-                'usrp_nombre'   => $googleUser->getName(),
-                'usrp_apellido' => '',
-            ]);
+        } catch (\Exception $e) {
+            return response()->json([ 'status'=>false, 'message'=>'Error Google OAuth: '.$e->getMessage() ], 500);
         }
+    }
 
-        DB::commit();
+    /**
+     * Cierra la sesión (revoca token).
+     */
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+        return response()->json([ 'status'=>true, 'message'=>'Sesión cerrada correctamente' ]);
+    }
 
-        $token = $usuario->createToken('google-token')->plainTextToken;
-
-        $frontend = env('FRONTEND_URL', 'http://localhost:5000');
-        return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
+    /**
+     * Obtiene datos del usuario autenticado.
+     */
+    public function getUserInfo(Request $request)
+    {
+        $usuario = $request->user();
+        $perfil  = UsuariosPerfil::where('usr_id',$usuario->usr_id)->first();
+        return response()->json([
+            'status'  => true,
+            'usuario' => [
+                'usr_id'   => $usuario->usr_id,
+                'usr_user' => $usuario->usr_user,
+                'usr_email'=> $usuario->usr_email,
+                'perfil'   => $perfil
+            ]
+        ]);
     }
 }
