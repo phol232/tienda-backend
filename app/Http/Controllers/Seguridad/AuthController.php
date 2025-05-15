@@ -158,22 +158,41 @@ class AuthController extends Controller
                 ]
             );
 
-            // Perfil
+            // Asegura que el perfil SIEMPRE se cree o se actualice con el usr_id
             $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
             $nameParts = explode(' ', $googleUser->getName() ?? '');
-            $perfil->usrp_id       = $perfil->usrp_id ?? (string) Str::uuid();
+            $perfil->usrp_id       = $usuario->usr_id;
             $perfil->usrp_nombre   = $nameParts[0] ?? '';
-            $perfil->usrp_apellido = count($nameParts)>1 ? implode(' ', array_slice($nameParts,1)) : '';
+            $perfil->usrp_apellido = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
             $perfil->usrp_imagen   = $googleUser->getAvatar();
             $perfil->save();
 
             $token = $usuario->createToken('auth_token')->plainTextToken;
             $frontend = env('FRONTEND_URL', 'http://localhost:5000');
+
+            // Incluye usr_id y perfil completo como query params para el frontend (más seguro con JSON, pero así es rápido)
             return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
 
         } catch (\Exception $e) {
-            return response()->json([ 'status'=>false, 'message'=>'Error Google OAuth: '.$e->getMessage() ], 500);
+            return response()->json(['status'=>false, 'message'=>'Error Google OAuth: '.$e->getMessage()], 500);
         }
+    }
+
+// Cuando recibes el token, usa el endpoint /api/user para obtener usuario+perfil con usr_id
+    public function getUserInfo(Request $request)
+    {
+        $usuario = $request->user();
+        $perfil  = UsuariosPerfil::where('usrp_id', $usuario->usr_id)->first();
+
+        return response()->json([
+            'status'  => true,
+            'usuario' => [
+                'usr_id'   => $usuario->usr_id,
+                'usr_user' => $usuario->usr_user,
+                'usr_email'=> $usuario->usr_email,
+                'perfil'   => $perfil
+            ]
+        ]);
     }
 
     /**
@@ -188,18 +207,6 @@ class AuthController extends Controller
     /**
      * Obtiene datos del usuario autenticado.
      */
-    public function getUserInfo(Request $request)
-    {
-        $usuario = $request->user();
-        $perfil  = UsuariosPerfil::where('usr_id',$usuario->usr_id)->first();
-        return response()->json([
-            'status'  => true,
-            'usuario' => [
-                'usr_id'   => $usuario->usr_id,
-                'usr_user' => $usuario->usr_user,
-                'usr_email'=> $usuario->usr_email,
-                'perfil'   => $perfil
-            ]
-        ]);
-    }
+
+
 }

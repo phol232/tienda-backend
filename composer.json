@@ -11,6 +11,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.20",
         "laravel/tinker": "^2.10.1",
+        "opcodesio/log-viewer": "^3.17",
         "spatie/laravel-tail": "^4.5"
     },
     "require-dev": {

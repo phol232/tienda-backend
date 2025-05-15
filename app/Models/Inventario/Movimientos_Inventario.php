@@ -1,6 +1,6 @@
 <?php
 
-// app/Models/Inventario/Movimientos_Inventario.php
+
 namespace App\Models\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
@@ -27,29 +27,48 @@ class Movimientos_Inventario extends Model
         'prov_id',
     ];
 
+    /** ← Esto hace que Eloquent cargue automáticamente estas relaciones al serializar */
+    protected $with = [
+        'tipoMovimiento',
+        'usuario',
+        'proveedor',
+        'productos',
+    ];
+
+    /**
+     * Relación al tipo de movimiento
+     */
     public function tipoMovimiento()
     {
         return $this->belongsTo(Tipos_Movimiento::class, 'tipmov_id', 'tipmov_id');
     }
 
+    /**
+     * Relación al usuario que hizo el movimiento
+     */
     public function usuario()
     {
         return $this->belongsTo(Usuarios::class, 'usr_id', 'usr_id');
     }
 
+    /**
+     * Relación al proveedor asociado
+     */
     public function proveedor()
     {
         return $this->belongsTo(Proveedores::class, 'prov_id', 'prov_id');
     }
 
+    /**
+     * Relación many-to-many con productos y datos pivot
+     */
     public function productos()
     {
         return $this->belongsToMany(
             Productos::class,
-            'Movimiento_Producto',
-            'mov_id',
-            'prod_id'
-        )
-            ->withPivot('movprod_cantidad', 'movprod_costo_unitario');
+            'Movimiento_Producto', // tu tabla pivote
+            'mov_id',               // FK local
+            'prod_id'               // FK remoto
+        )->withPivot('movprod_cantidad', 'movprod_costo_unitario');
     }
 }

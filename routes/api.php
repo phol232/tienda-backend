@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Inventario\TiposMovimientosController;
 use App\Http\Controllers\Seguridad\AuthController;
 use App\Http\Controllers\Clientes\Categoria_ClientesController;
 use App\Http\Controllers\Productos_Proveedores\Categoria_ProveedoresController;
@@ -19,6 +20,9 @@ Route::apiResource('proveedores',            ProveedoresController::class);
 Route::get('productos/create',               [ProductosController::class, 'create']);
 Route::apiResource('productos',              ProductosController::class);
 
+Route::get('tipos-movimientos',              [TiposMovimientosController::class, 'index']);
+Route::get('tipos-movimientos/{id}',         [TiposMovimientosController::class, 'show']);
+
 Route::prefix('inventario')->group(function(){
     Route::apiResource('movimientos',      MovimientosController::class);
     Route::apiResource('alertas',           AlertaStockController::class);
@@ -26,15 +30,16 @@ Route::prefix('inventario')->group(function(){
     Route::get('productos/lista', [ProductosController::class, 'index']);
 });
 
-
+// Autenticación pública
 Route::post('/login',    [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 
 // Google OAuth
-Route::get('/auth/google/redirect',  [AuthController::class, 'redirectToGoogle']);
-Route::get('/auth/google/callback',  [AuthController::class, 'handleGoogleCallback']);
+Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle']);
+Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
-// Rutas protegidas
+// Rutas protegidas con Sanctum
 Route::middleware('auth:sanctum')->group(function() {
-    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/logout',      [AuthController::class, 'logout']);
+    Route::get('/user',         [AuthController::class, 'getUserInfo']);
 });

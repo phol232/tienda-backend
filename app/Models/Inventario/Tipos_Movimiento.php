@@ -3,6 +3,7 @@
 namespace App\Models\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Inventario\Movimientos_Inventario;
 
 class Tipos_Movimiento extends Model
 {
@@ -19,8 +20,15 @@ class Tipos_Movimiento extends Model
         'tipmov_estado',
     ];
 
+    /**
+     * Relación con Movimientos_Inventario
+     */
     public function movimientosInventario()
     {
-        return $this->hasMany(Movimientos_Inventario::class, 'tipmov_id', 'tipmov_id');
+        return $this->hasMany(
+            Movimientos_Inventario::class, // modelo relacionado
+            'tipmov_id',                   // FK en Movimientos_Inventario
+            'tipmov_id'                    // PK aquí
+        );
     }
 }
