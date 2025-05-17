@@ -1,0 +1,7 @@
+{
+    "alerta_tipo": "Nivel Bajo",
+    "alerta_nivel": "Advertencia",
+    "alerta_mensaje": "Stock del producto X está por debajo del mínimo.",
+    "prod_id": "PROD-006",
+    "usr_id_creador": "72890842"
+}

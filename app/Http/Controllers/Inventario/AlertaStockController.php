@@ -3,94 +3,152 @@
 namespace App\Http\Controllers\Inventario;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Inventario\AlertaStock;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 class AlertaStockController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $alertas = AlertaStock::with(['producto', 'creador', 'resolucion'])->get();
-        return response()->json($alertas);
+        $query = AlertaStock::with(['producto', 'configuracionOrigen', 'resueltaPor', 'notificaciones']);
+
+        if ($request->has('estado_alerta')) {
+            $query->where('estado_alerta', $request->input('estado_alerta'));
+        }
+        if ($request->has('prod_id')) {
+            $query->where('prod_id', $request->input('prod_id'));
+        }
+
+        $alertas = $query->orderBy('fecha_generacion', 'desc')->get();
+
+        $alertasArray = [];
+
+        foreach ($alertas as $alerta) {
+            // Refresca el producto por si acaso
+            if ($alerta->producto) {
+                $alerta->setRelation('producto', $alerta->producto->fresh());
+            }
+
+            // Arma el comentario con el stock real actual
+            $comentario_actual = "Stock actual: " . ($alerta->producto->pro_stock ?? 'N/A') .
+                ". Umbral de configuración original (ID:{$alerta->config_alerta_id_origen}): {$alerta->umbral_evaluado}, Tipo config: " .
+                ($alerta->configuracion_origen->config_tipo ?? 'N/A') . ".";
+
+            $alertaArray = $alerta->toArray();
+            $alertaArray['comentario_resolucion_actual'] = $comentario_actual;
+
+            $alertasArray[] = $alertaArray;
+        }
+
+        return response()->json($alertasArray);
     }
 
     public function show($id)
     {
-        $alerta = AlertaStock::with(['producto', 'creador', 'resolucion'])
-            ->findOrFail($id);
-        return response()->json($alerta);
-    }
+        $alerta = AlertaStock::with(['producto', 'configuracionOrigen', 'resueltaPor', 'notificaciones'])->findOrFail($id);
 
-    public function store(Request $request)
-    {
-        $v = $request->validate([
-            'alerta_tipo'            => 'required|string|max:20',
-            'alerta_nivel'           => 'required|string|max:20',
-            'alerta_mensaje'         => 'required|string',
-            'alerta_fecha'           => 'nullable|date',
-            'alerta_estado'          => 'sometimes|string|max:20',
-            'alerta_fecha_resolucion'=> 'nullable|date',
-            'alerta_comentario'      => 'nullable|string',
-            'prod_id'                => 'required|string|exists:Productos,pro_id',
-            'usr_id_creador'         => 'required|string|exists:Usuarios,usr_id',
-            'usr_id_resolucion'      => 'nullable|string|exists:Usuarios,usr_id',
-        ]);
+        if ($alerta->producto) {
+            $alerta->setRelation('producto', $alerta->producto->fresh());
+        }
 
-        $alerta = AlertaStock::create([
-            'alerta_id'             => $this->generateAlertaId(),
-            'alerta_tipo'           => $v['alerta_tipo'],
-            'alerta_nivel'          => $v['alerta_nivel'],
-            'alerta_mensaje'        => $v['alerta_mensaje'],
-            'alerta_fecha'          => $v['alerta_fecha'] ?? now(),
-            'alerta_estado'         => $v['alerta_estado'] ?? 'Activa',
-            'alerta_fecha_resolucion'=> $v['alerta_fecha_resolucion'] ?? null,
-            'alerta_comentario'     => $v['alerta_comentario'] ?? null,
-            'prod_id'               => $v['prod_id'],
-            'usr_id_creador'        => $v['usr_id_creador'],
-            'usr_id_resolucion'     => $v['usr_id_resolucion'] ?? null,
-        ]);
+        $comentario_actual = "Stock actual: " . ($alerta->producto->pro_stock ?? 'N/A') .
+            ". Umbral de configuración original (ID:{$alerta->config_alerta_id_origen}): {$alerta->umbral_evaluado}, Tipo config: " .
+            ($alerta->configuracion_origen->config_tipo ?? 'N/A') . ".";
 
-        return response()->json($alerta, Response::HTTP_CREATED);
+        $alertaArray = $alerta->toArray();
+        $alertaArray['comentario_resolucion_actual'] = $comentario_actual;
+
+        return response()->json($alertaArray);
     }
 
     public function update(Request $request, $id)
     {
         $alerta = AlertaStock::findOrFail($id);
 
-        $v = $request->validate([
-            'alerta_tipo'            => 'sometimes|required|string|max:20',
-            'alerta_nivel'           => 'sometimes|required|string|max:20',
-            'alerta_mensaje'         => 'sometimes|required|string',
-            'alerta_fecha'           => 'nullable|date',
-            'alerta_estado'          => 'sometimes|string|max:20',
-            'alerta_fecha_resolucion'=> 'nullable|date',
-            'alerta_comentario'      => 'nullable|string',
-            'prod_id'                => 'sometimes|required|string|exists:Productos,pro_id',
-            'usr_id_creador'         => 'sometimes|required|string|exists:Usuarios,usr_id',
-            'usr_id_resolucion'      => 'nullable|string|exists:Usuarios,usr_id',
+        $validator = Validator::make($request->all(), [
+            'estado_alerta' => ['required', Rule::in(['Activa', 'En Revision', 'Resuelta', 'Ignorada'])],
+            'fecha_resolucion' => 'nullable|date|required_if:estado_alerta,Resuelta',
+            'comentario_resolucion' => 'nullable|string|required_if:estado_alerta,Resuelta',
+            'resuelta_por_usr_id' => 'nullable|string|max:12|exists:Usuarios,usr_id|required_if:estado_alerta,Resuelta',
         ]);
 
-        $alerta->fill($v);
-        $alerta->save();
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-        return response()->json($alerta);
+        $datosValidados = $validator->validated();
+
+        if ($datosValidados['estado_alerta'] === 'Resuelta' && empty($datosValidados['fecha_resolucion'])) {
+            $datosValidados['fecha_resolucion'] = now();
+        }
+        if ($datosValidados['estado_alerta'] !== 'Resuelta') {
+            $datosValidados['fecha_resolucion'] = null;
+            $datosValidados['comentario_resolucion'] = null;
+            $datosValidados['resuelta_por_usr_id'] = null;
+        }
+
+        $alerta->update($datosValidados);
+        $alerta->load(['producto', 'configuracionOrigen', 'resueltaPor']);
+
+        if ($alerta->producto) {
+            $alerta->setRelation('producto', $alerta->producto->fresh());
+        }
+
+        $comentario_actual = "Stock actual: " . ($alerta->producto->pro_stock ?? 'N/A') .
+            ". Umbral de configuración original (ID:{$alerta->config_alerta_id_origen}): {$alerta->umbral_evaluado}, Tipo config: " .
+            ($alerta->configuracion_origen->config_tipo ?? 'N/A') . ".";
+
+        $alertaArray = $alerta->toArray();
+        $alertaArray['comentario_resolucion_actual'] = $comentario_actual;
+
+        return response()->json($alertaArray);
+    }
+
+    public function storeManualAlerta(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'prod_id' => 'required|string|max:12|exists:Productos,pro_id',
+            'config_alerta_id_origen' => 'nullable|integer|exists:Configuracion_Alertas,config_alerta_id',
+            'stock_capturado' => 'required|integer',
+            'umbral_evaluado' => 'required|integer',
+            'alerta_tipo_generada' => 'required|string|max:50',
+            'alerta_nivel_generado' => ['required', Rule::in(['INFO', 'ADVERTENCIA', 'CRITICO'])],
+            'mensaje_automatico' => 'required|string',
+            'estado_alerta' => ['sometimes', Rule::in(['Activa', 'En Revision', 'Resuelta', 'Ignorada'])],
+            'creada_por_proceso' => 'sometimes|string|max:50',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $datosValidados = $validator->validated();
+        $datosValidados['estado_alerta'] = $request->input('estado_alerta', 'Activa');
+        $datosValidados['creada_por_proceso'] = $request->input('creada_por_proceso', 'MANUAL_API');
+
+        $alerta = AlertaStock::create($datosValidados);
+        $alerta->load(['producto', 'configuracionOrigen', 'resueltaPor']);
+
+        if ($alerta->producto) {
+            $alerta->setRelation('producto', $alerta->producto->fresh());
+        }
+
+        $comentario_actual = "Stock actual: " . ($alerta->producto->pro_stock ?? 'N/A') .
+            ". Umbral de configuración original (ID:{$alerta->config_alerta_id_origen}): {$alerta->umbral_evaluado}, Tipo config: " .
+            ($alerta->configuracion_origen->config_tipo ?? 'N/A') . ".";
+
+        $alertaArray = $alerta->toArray();
+        $alertaArray['comentario_resolucion_actual'] = $comentario_actual;
+
+        return response()->json($alertaArray, Response::HTTP_CREATED);
     }
 
     public function destroy($id)
     {
-        AlertaStock::findOrFail($id)->delete();
+        $alerta = AlertaStock::findOrFail($id);
+        $alerta->delete();
         return response()->json(null, Response::HTTP_NO_CONTENT);
-    }
-
-    private function generateAlertaId(): string
-    {
-        $last = AlertaStock::orderBy('alerta_id', 'desc')->first();
-        if ($last && preg_match('/ALT-(\d+)/', $last->alerta_id, $m)) {
-            $num = intval($m[1]) + 1;
-        } else {
-            $num = 1;
-        }
-        return 'ALT-'.str_pad($num, 4, '0', STR_PAD_LEFT);
     }
 }

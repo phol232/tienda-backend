@@ -1,0 +1,11 @@
+{
+    "config_nombre": "Advertencia Stock Bajo - Laptop Gamer",
+    "config_tipo": "STOCK_DEBAJO_DE_UMBRAL",
+    "config_umbral_valor": 2,
+    "config_aplicabilidad": "POR_PRODUCTO_ESPECIFICO",
+    "id_referencia_aplicabilidad": "PROD-005",
+    "config_descripcion": "Alerta cuando el Producto Fanta tenga un stopck por debajo de 2 unidades.",
+    "config_nivel_alerta_default": "ADVERTENCIA",
+    "config_estado": "Activa",
+    "config_creado_por_usr_id": "72890842"
+}

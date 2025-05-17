@@ -3,50 +3,70 @@
 namespace App\Http\Controllers\Inventario;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Inventario\ConfiguracionAlerta;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 class ConfiguracionAlertaController extends Controller
 {
     public function index()
     {
-        $configs = ConfiguracionAlerta::with('usuario')->get();
+        $configs = ConfiguracionAlerta::with('creadoPor')->get();
         return response()->json($configs);
     }
 
     public function show($id)
     {
-        $config = ConfiguracionAlerta::with('usuario')->findOrFail($id);
+        $config = ConfiguracionAlerta::with('creadoPor')->findOrFail($id);
         return response()->json($config);
     }
 
     public function store(Request $request)
     {
-        $v = $request->validate([
-            'config_nombre'        => 'required|string|unique:Configuracion_Alertas,config_nombre',
-            'config_tipo'          => 'required|string|max:20',
-            'config_umbral'        => 'nullable|integer',
-            'config_porcentaje'    => 'nullable|numeric',
-            'config_periodo'       => 'nullable|integer',
-            'config_estado'        => 'sometimes|string|max:20',
-            'config_destinatarios' => 'nullable|string',
-            'config_ultima_revision'=> 'nullable|date',
-            'usr_id'               => 'required|string|exists:Usuarios,usr_id',
+        $validator = Validator::make($request->all(), [
+            'config_nombre' => 'required|string|max:150|unique:Configuracion_Alertas,config_nombre',
+            'config_tipo' => ['required', Rule::in(['STOCK_LLEGA_A_VALOR', 'STOCK_DEBAJO_DE_UMBRAL'])],
+            'config_umbral_valor' => 'required|integer',
+            'config_aplicabilidad' => ['required', Rule::in(['GENERAL', 'POR_CATEGORIA', 'POR_PRODUCTO_ESPECIFICO'])],
+            'id_referencia_aplicabilidad' => [
+                'nullable',
+                'string',
+                'max:12',
+                function ($attribute, $value, $fail) use ($request) {
+                    $aplicabilidad = $request->input('config_aplicabilidad');
+                    if ($aplicabilidad === 'GENERAL' && $value !== null) {
+                        $fail('Para aplicabilidad GENERAL, id_referencia_aplicabilidad debe ser nulo.');
+                    }
+                    if (in_array($aplicabilidad, ['POR_CATEGORIA', 'POR_PRODUCTO_ESPECIFICO']) && $value === null) {
+                        $fail('Para aplicabilidad POR_CATEGORIA o POR_PRODUCTO_ESPECIFICO, id_referencia_aplicabilidad es requerido.');
+                    }
+                    // Aquí podrías añadir validación 'exists' si $value no es nulo
+                    if ($value !== null) {
+                        if ($aplicabilidad === 'POR_CATEGORIA' && !\App\Models\Productos_Proveedores\Categorias::where('cat_id', $value)->exists()) {
+                            $fail('El id_referencia_aplicabilidad no es una categoría válida.');
+                        } elseif ($aplicabilidad === 'POR_PRODUCTO_ESPECIFICO' && !\App\Models\Productos_Proveedores\Productos::where('pro_id', $value)->exists()) {
+                            $fail('El id_referencia_aplicabilidad no es un producto válido.');
+                        }
+                    }
+                },
+            ],
+            'config_descripcion' => 'nullable|string',
+            'config_nivel_alerta_default' => ['required', Rule::in(['INFO', 'ADVERTENCIA', 'CRITICO'])],
+            'config_estado' => ['sometimes', Rule::in(['Activa', 'Inactiva'])],
+            'config_creado_por_usr_id' => 'required|string|max:12|exists:Usuarios,usr_id',
         ]);
 
-        $config = ConfiguracionAlerta::create([
-            'config_id'           => $this->generateConfigId(),
-            'config_nombre'       => $v['config_nombre'],
-            'config_tipo'         => $v['config_tipo'],
-            'config_umbral'       => $v['config_umbral'] ?? null,
-            'config_porcentaje'   => $v['config_porcentaje'] ?? null,
-            'config_periodo'      => $v['config_periodo'] ?? null,
-            'config_estado'       => $v['config_estado'] ?? 'Activa',
-            'config_destinatarios'=> $v['config_destinatarios'] ?? null,
-            'config_ultima_revision'=> $v['config_ultima_revision'] ?? now(),
-            'usr_id'              => $v['usr_id'],
-        ]);
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $datosValidados = $validator->validated();
+        $datosValidados['config_estado'] = $request->input('config_estado', 'Activa'); // Default si no viene
+
+        $config = ConfiguracionAlerta::create($datosValidados);
+        $config->load('creadoPor');
 
         return response()->json($config, Response::HTTP_CREATED);
     }
@@ -55,20 +75,57 @@ class ConfiguracionAlertaController extends Controller
     {
         $config = ConfiguracionAlerta::findOrFail($id);
 
-        $v = $request->validate([
-            'config_nombre'        => 'sometimes|required|string|unique:Configuracion_Alertas,config_nombre,'.$id.',config_id',
-            'config_tipo'          => 'sometimes|required|string|max:20',
-            'config_umbral'        => 'nullable|integer',
-            'config_porcentaje'    => 'nullable|numeric',
-            'config_periodo'       => 'nullable|integer',
-            'config_estado'        => 'sometimes|string|max:20',
-            'config_destinatarios' => 'nullable|string',
-            'config_ultima_revision'=> 'nullable|date',
-            'usr_id'               => 'sometimes|required|string|exists:Usuarios,usr_id',
+        $validator = Validator::make($request->all(), [
+            'config_nombre' => ['sometimes','required','string','max:150',Rule::unique('Configuracion_Alertas')->ignore($id, 'config_alerta_id')],
+            'config_tipo' => ['sometimes','required', Rule::in(['STOCK_LLEGA_A_VALOR', 'STOCK_DEBAJO_DE_UMBRAL'])],
+            'config_umbral_valor' => 'sometimes|required|integer',
+            'config_aplicabilidad' => ['sometimes','required', Rule::in(['GENERAL', 'POR_CATEGORIA', 'POR_PRODUCTO_ESPECIFICO'])],
+            'id_referencia_aplicabilidad' => [
+                'nullable', // Permitir enviar null para actualizar a GENERAL
+                'string',
+                'max:12',
+                function ($attribute, $value, $fail) use ($request, $config) {
+                    // Si no se envía config_aplicabilidad, usar la existente. Si se envía, usar la nueva.
+                    $aplicabilidad = $request->input('config_aplicabilidad', $config->config_aplicabilidad);
+
+                    if ($aplicabilidad === 'GENERAL' && $value !== null && $request->has('id_referencia_aplicabilidad')) { // Solo falla si se intenta poner un valor
+                        $fail('Para aplicabilidad GENERAL, id_referencia_aplicabilidad debe ser nulo.');
+                    }
+                    if (in_array($aplicabilidad, ['POR_CATEGORIA', 'POR_PRODUCTO_ESPECIFICO']) && $value === null && $request->has('id_referencia_aplicabilidad')) {
+                        // Solo falla si se intenta poner null explícitamente y no se está cambiando a GENERAL
+                        if (!($request->input('config_aplicabilidad') === 'GENERAL')) {
+                            $fail('Para aplicabilidad POR_CATEGORIA o POR_PRODUCTO_ESPECIFICO, id_referencia_aplicabilidad es requerido.');
+                        }
+                    }
+                    if ($value !== null) { // Solo valida si se provee un valor
+                        if ($aplicabilidad === 'POR_CATEGORIA' && !\App\Models\Productos_Proveedores\Categorias::where('cat_id', $value)->exists()) {
+                            $fail('El id_referencia_aplicabilidad no es una categoría válida.');
+                        } elseif ($aplicabilidad === 'POR_PRODUCTO_ESPECIFICO' && !\App\Models\Productos_Proveedores\Productos::where('pro_id', $value)->exists()) {
+                            $fail('El id_referencia_aplicabilidad no es un producto válido.');
+                        }
+                    }
+                },
+            ],
+            'config_descripcion' => 'nullable|string',
+            'config_nivel_alerta_default' => ['sometimes','required', Rule::in(['INFO', 'ADVERTENCIA', 'CRITICO'])],
+            'config_estado' => ['sometimes', Rule::in(['Activa', 'Inactiva'])],
+            // 'config_creado_por_usr_id' => 'sometimes|required|string|max:12|exists:Usuarios,usr_id', // Generalmente no se actualiza
         ]);
 
-        $config->fill($v);
-        $config->save();
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $datosValidados = $validator->validated();
+
+        // Lógica especial para id_referencia_aplicabilidad si config_aplicabilidad cambia a GENERAL
+        if ($request->has('config_aplicabilidad') && $request->input('config_aplicabilidad') === 'GENERAL') {
+            $datosValidados['id_referencia_aplicabilidad'] = null;
+        }
+
+
+        $config->update($datosValidados);
+        $config->load('creadoPor');
 
         return response()->json($config);
     }
@@ -77,16 +134,5 @@ class ConfiguracionAlertaController extends Controller
     {
         ConfiguracionAlerta::findOrFail($id)->delete();
         return response()->json(null, Response::HTTP_NO_CONTENT);
-    }
-
-    private function generateConfigId(): string
-    {
-        $last = ConfiguracionAlerta::orderBy('config_id', 'desc')->first();
-        if ($last && preg_match('/CONF-(\d+)/', $last->config_id, $m)) {
-            $num = intval($m[1]) + 1;
-        } else {
-            $num = 1;
-        }
-        return 'CONF-'.str_pad($num, 4, '0', STR_PAD_LEFT);
     }
 }

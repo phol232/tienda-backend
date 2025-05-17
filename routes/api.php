@@ -10,36 +10,55 @@ use App\Http\Controllers\Productos_Proveedores\ProveedoresController;
 use App\Http\Controllers\Inventario\MovimientosController;
 use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
+use App\Http\Controllers\Inventario\NotificacionAlertaController;
 use Illuminate\Support\Facades\Route;
 
-// Rutas públicas
-Route::apiResource('categorias',             CategoriaController::class);
-Route::apiResource('categorias-clientes',    Categoria_ClientesController::class);
+
+Route::apiResource('categorias', CategoriaController::class);
+Route::apiResource('categorias-clientes', Categoria_ClientesController::class);
 Route::apiResource('categorias-proveedores', Categoria_ProveedoresController::class);
-Route::apiResource('proveedores',            ProveedoresController::class);
-Route::get('productos/create',               [ProductosController::class, 'create']);
-Route::apiResource('productos',              ProductosController::class);
+Route::apiResource('proveedores', ProveedoresController::class);
 
-Route::get('tipos-movimientos',              [TiposMovimientosController::class, 'index']);
-Route::get('tipos-movimientos/{id}',         [TiposMovimientosController::class, 'show']);
+// Rutas de Productos
+Route::get('productos/create', [ProductosController::class, 'create'])->name('productos.create_options'); // Para obtener datos para formularios de creación
+Route::get('productos/buscar-por-nombre', [ProductosController::class, 'searchByName'])->name('productos.searchByName'); // Para búsqueda por nombre
+Route::apiResource('productos', ProductosController::class);
 
-Route::prefix('inventario')->group(function(){
-    Route::apiResource('movimientos',      MovimientosController::class);
-    Route::apiResource('alertas',           AlertaStockController::class);
-    Route::apiResource('configuracion',     ConfiguracionAlertaController::class);
-    Route::get('productos/lista', [ProductosController::class, 'index']);
+
+Route::get('tipos-movimientos', [TiposMovimientosController::class, 'index'])->name('tipos-movimientos.index');
+Route::get('tipos-movimientos/{id}', [TiposMovimientosController::class, 'show'])->name('tipos-movimientos.show');
+
+
+// Grupo de rutas para el módulo de Inventario
+Route::prefix('inventario')->name('inventario.')->group(function () {
+    Route::apiResource('movimientos', MovimientosController::class);
+
+    Route::apiResource('configuracion-alertas', ConfiguracionAlertaController::class)->names('configuracionAlertas');
+
+    Route::apiResource('alertas-stock', AlertaStockController::class)
+        ->except(['store'])
+        ->names('alertasStock');
+    Route::post('alertas-stock/manual', [AlertaStockController::class, 'storeManualAlerta'])
+        ->name('alertasStock.storeManual');
+
+    Route::apiResource('notificaciones-alertas', NotificacionAlertaController::class)
+        ->except(['destroy'])
+        ->names('notificacionesAlertas');
+
+    Route::get('productos/lista', [ProductosController::class, 'index'])->name('productos.lista');
 });
 
-// Autenticación pública
-Route::post('/login',    [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
 
-// Google OAuth
-Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle']);
-Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
+
+Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::post('/register', [AuthController::class, 'register'])->name('register');
+
+Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle'])->name('auth.google.redirect');
+Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 
 // Rutas protegidas con Sanctum
-Route::middleware('auth:sanctum')->group(function() {
-    Route::post('/logout',      [AuthController::class, 'logout']);
-    Route::get('/user',         [AuthController::class, 'getUserInfo']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
+
 });

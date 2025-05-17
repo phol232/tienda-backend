@@ -1,0 +1,11 @@
+{
+    "config_nombre": "Alerta General Inválida con ID Ref",
+    "config_tipo": "STOCK_LLEGA_A_VALOR",
+    "config_umbral_valor": 3,
+    "config_aplicabilidad": "GENERAL",
+    "id_referencia_aplicabilidad": "PROD-006",
+    "config_descripcion": "Esto no debería funcionar",
+    "config_nivel_alerta_default": "INFO",
+    "config_estado": "Activa",
+    "config_creado_por_usr_id": "72890845"
+}

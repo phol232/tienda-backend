@@ -9,23 +9,32 @@ use App\Models\Seguridad\Usuarios;
 class AlertaStock extends Model
 {
     protected $table = 'Alertas_Stock';
-    protected $primaryKey = 'alerta_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    protected $primaryKey = 'alerta_stock_id';
+
+    const CREATED_AT = 'fecha_generacion';
+    const UPDATED_AT = null;
     public $timestamps = false;
 
     protected $fillable = [
-        'alerta_id',
-        'alerta_tipo',
-        'alerta_nivel',
-        'alerta_mensaje',
-        'alerta_fecha',
-        'alerta_estado',
-        'alerta_fecha_resolucion',
-        'alerta_comentario',
         'prod_id',
-        'usr_id_creador',
-        'usr_id_resolucion',
+        'config_alerta_id_origen',
+        'stock_capturado',
+        'umbral_evaluado',
+        'alerta_tipo_generada',
+        'alerta_nivel_generado',
+        'mensaje_automatico',
+        'estado_alerta',
+        'fecha_resolucion',
+        'comentario_resolucion',
+        'resuelta_por_usr_id',
+        'creada_por_proceso',
+    ];
+
+    protected $casts = [
+        'fecha_generacion' => 'datetime',
+        'fecha_resolucion' => 'datetime',
+        'stock_capturado' => 'integer',
+        'umbral_evaluado' => 'integer',
     ];
 
     public function producto()
@@ -33,13 +42,18 @@ class AlertaStock extends Model
         return $this->belongsTo(Productos::class, 'prod_id', 'pro_id');
     }
 
-    public function creador()
+    public function configuracionOrigen()
     {
-        return $this->belongsTo(Usuarios::class, 'usr_id_creador', 'usr_id');
+        return $this->belongsTo(ConfiguracionAlerta::class, 'config_alerta_id_origen', 'config_alerta_id');
     }
 
-    public function resolucion()
+    public function resueltaPor()
     {
-        return $this->belongsTo(Usuarios::class, 'usr_id_resolucion', 'usr_id');
+        return $this->belongsTo(Usuarios::class, 'resuelta_por_usr_id', 'usr_id');
+    }
+
+    public function notificaciones()
+    {
+        return $this->hasMany(NotificacionAlerta::class, 'alerta_stock_id', 'alerta_stock_id');
     }
 }

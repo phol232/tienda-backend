@@ -1,0 +1,11 @@
+{
+    "config_nombre": "Info Stock Bajo - Categoría Periféricos",
+    "config_tipo": "STOCK_DEBAJO_DE_UMBRAL",
+    "config_umbral_valor": 3,
+    "config_aplicabilidad": "POR_CATEGORIA",
+    "id_referencia_aplicabilidad": "CATP-001",
+    "config_descripcion": "Alerta informativa cuando productos de la categoría Periféricos bajen de 3 unidades.",
+    "config_nivel_alerta_default": "INFO",
+    "config_estado": "Activa",
+    "config_creado_por_usr_id": "72890844"
+}
