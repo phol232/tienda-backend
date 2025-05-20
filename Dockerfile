@@ -1,42 +1,43 @@
-# Dockerfile
-FROM php:8.2-cli
+FROM php:8.2-fpm
 
-# 1) Instala extensiones necesarias
-RUN apt-get update -qq \
- && apt-get install -y --no-install-recommends \
-      zip unzip git libonig-dev libzip-dev \
- && docker-php-ext-install pdo_mysql mbstring bcmath \
- && rm -rf /var/lib/apt/lists/*
+# Instala dependencias y extensiones necesarias
+RUN apt-get update && apt-get install -y \
+    libzip-dev \
+    zip \
+    unzip \
+    git \
+    && docker-php-ext-install pdo pdo_mysql zip
 
-# 2) Instala Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Instala y configura Opcache para mejorar rendimiento
+RUN docker-php-ext-install opcache
+COPY docker/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
+# Instala Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configuración para mejor rendimiento
+RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory-limit.ini
+
+# Directorio de trabajo
 WORKDIR /var/www/html
 
-# 3) Copia solo composer.json y composer.lock para cachear deps
+# Copia los archivos de composer primero para aprovechar la caché
 COPY composer.json composer.lock ./
+RUN composer install --no-scripts --no-autoloader
 
-# 4) Instala dependencias SIN disparar scripts (principalmente para no romper por falta de artisan)
-RUN composer install \
-    --no-dev \
-    --no-scripts \
-    --optimize-autoloader \
-    --no-interaction \
-    --prefer-dist
-
-# 5) Copia TODO el resto del proyecto (incluye artisan, rutas, public, etc)
+# Copia el resto de la aplicación
 COPY . .
 
-# 6) Asegúrate de que haya un .env
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
+# Finaliza la instalación de Composer
+RUN composer dump-autoload --optimize
 
-# 7) Ahora sí dispara los scripts de Composer y el package:discover
-RUN composer dump-autoload --optimize \
- && php artisan package:discover --ansi
+# Configura permisos
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# 8) Ajusta permisos de carpetas de cache y logs
-RUN chown -R www-data:www-data storage bootstrap/cache
+# Optimiza Laravel
+RUN php artisan optimize
+RUN php artisan config:cache
+RUN php artisan route:cache
 
 EXPOSE 8000
-
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
