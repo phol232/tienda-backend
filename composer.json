@@ -9,7 +9,10 @@
         "php": "^8.2",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
-        "laravel/tinker": "^2.10.1"
+        "laravel/socialite": "^5.20",
+        "laravel/tinker": "^2.10.1",
+        "opcodesio/log-viewer": "^3.17",
+        "spatie/laravel-tail": "^4.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -55,7 +58,10 @@
     },
     "extra": {
         "laravel": {
-            "dont-discover": []
+            "dont-discover": [
+                "laravel/pail",
+                "nunomaduro/collision"
+            ]
         }
     },
     "config": {

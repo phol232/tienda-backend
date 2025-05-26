@@ -1,34 +1,43 @@
 FROM php:8.2-fpm
 
-# Instalar dependencias
+# Instala dependencias y extensiones necesarias
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpng-dev \
-    libjpeg-dev \
-    libonig-dev \
-    libxml2-dev \
+    libzip-dev \
     zip \
-    curl \
     unzip \
     git \
-    libzip-dev \
-    && docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath gd
+    && docker-php-ext-install pdo pdo_mysql zip
 
-# Instalar Composer
+# Instala y configura Opcache para mejorar rendimiento
+RUN docker-php-ext-install opcache
+COPY docker/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+
+# Instala Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Crear directorio de trabajo
-WORKDIR /var/www
+# Configuración para mejor rendimiento
+RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory-limit.ini
 
-# Copiar archivos del proyecto
+# Directorio de trabajo
+WORKDIR /var/www/html
+
+# Copia los archivos de composer primero para aprovechar la caché
+COPY composer.json composer.lock ./
+RUN composer install --no-scripts --no-autoloader
+
+# Copia el resto de la aplicación
 COPY . .
 
-# Instalar dependencias de Laravel
-RUN composer install
+# Finaliza la instalación de Composer
+RUN composer dump-autoload --optimize
 
-# Dar permisos
-RUN chown -R www-data:www-data /var/www && chmod -R 755 /var/www/storage
+# Configura permisos
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-EXPOSE 9000
+# Optimiza Laravel
+RUN php artisan optimize
+RUN php artisan config:cache
+RUN php artisan route:cache
 
-CMD ["php-fpm"]
+EXPOSE 8000
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]

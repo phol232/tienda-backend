@@ -1,0 +1,13 @@
+{
+    "prov_nombre":   "Insumos Perú S.A",
+    "prov_contacto": "Luis Torres",
+    "prov_telefono": "+51 987 654 321",
+    "prov_email":    "arequipa@insumosperu.pe",
+    "prov_direccion": "Calle Falsa 123",
+    "prov_rfc":       "INS123456789",
+    "prov_notas":     "Nuevo proveedor de material de oficina",
+    "prov_estado":   "Activo",
+    "categorias": [
+        "Oficina"
+    ]
+}

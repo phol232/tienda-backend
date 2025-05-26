@@ -1,0 +1,11 @@
+{
+    "config_nombre": "Stock Crítico General - Exacto 2 Unidades",
+    "config_tipo": "STOCK_LLEGA_A_VALOR",
+    "config_umbral_valor": 2,
+    "config_aplicabilidad": "GENERAL",
+    "id_referencia_aplicabilidad": null,
+    "config_descripcion": "Alerta cuando cualquier producto llega exactamente a 2 unidades.",
+    "config_nivel_alerta_default": "CRITICO",
+    "config_estado": "Activa",
+    "config_creado_por_usr_id": "72890842"
+}

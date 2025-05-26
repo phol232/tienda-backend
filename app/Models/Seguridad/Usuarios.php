@@ -19,27 +19,23 @@ class Usuarios extends Authenticatable
     protected $keyType = 'string';
     public $timestamps = false;
 
-    // AÑADE ESTO (opcional)
     protected $fillable = [
+        'usr_id',
         'usr_user',
         'usr_email',
         'usr_password',
         'usr_estado'
     ];
 
-    // Oculta la contraseña y otros campos sensibles en respuestas JSON
     protected $hidden = [
         'usr_password',
-        // agrega aquí otros campos sensibles si los hay
     ];
 
-    // Si quieres que Laravel use usr_email como identificador de email:
     public function getAuthIdentifierName()
     {
         return 'usr_email';
     }
 
-    // Si quieres que Laravel use usr_password como campo de contraseña:
     public function getAuthPassword()
     {
         return $this->usr_password;
