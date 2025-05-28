@@ -8,8 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Redirect;
 use Laravel\Socialite\Facades\Socialite;
@@ -24,14 +22,20 @@ class AuthController extends Controller
             'usr_email'     => 'required|email|unique:Usuarios,usr_email|max:100',
             'usr_user'      => 'required|string|unique:Usuarios,usr_user|max:30',
             'password'      => [
-                'required','string','confirmed','min:8',
-                'regex:/[A-Z]/','regex:/[0-9]/','regex:/[^A-Za-z0-9]/'
+                'required',
+                'string',
+                'confirmed',
+                'min:8',
+                'regex:/[A-Z]/',
+                'regex:/[0-9]/',
+                'regex:/[^A-Za-z0-9]/'
             ],
         ], [
             'password.regex' => 'La contraseña requiere mayúscula, número y carácter especial.'
         ]);
 
         DB::beginTransaction();
+
         try {
             $last = Usuarios::max('usr_id');
             $num  = $last ? ((int)$last + 1) : 1;
@@ -51,7 +55,6 @@ class AuthController extends Controller
                 'usr_id'        => $uid,
                 'usrp_nombre'   => $request->usrp_nombre,
                 'usrp_apellido' => $request->usrp_apellido,
-                // usrp_imagen queda NULL por ahora
             ]);
 
             DB::commit();
@@ -121,83 +124,72 @@ class AuthController extends Controller
         ], 200);
     }
 
-    //──────────────────────────────────────────────
-    // Google OAuth
-    //──────────────────────────────────────────────
-
+    /**
+     * Redirige al login de Google.
+     */
     public function redirectToGoogle()
     {
         return Socialite::driver('google')
-                       ->stateless()
-                       ->redirect();
+            ->stateless()
+            ->redirect();
     }
 
+    /**
+     * Maneja el callback de Google.
+     */
     public function handleGoogleCallback()
     {
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
+
+            // Busca o crea usuario
+            $usuario = Usuarios::firstOrCreate(
+                ['usr_email' => $googleUser->getEmail()],
+                [
+                    'usr_id'       => Usuarios::max('usr_id')
+                        ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), '0', STR_PAD_LEFT)
+                        : '1',
+                    'usr_user'     => explode('@', $googleUser->getEmail())[0],
+                    'usr_password' => Hash::make(Str::random(16)),
+                    'usr_estado'   => 'Activo',
+                ]
+            );
+
+            // Asegura que el perfil SIEMPRE se cree o se actualice con el usr_id
+            $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
+            $nameParts = explode(' ', $googleUser->getName() ?? '');
+            $perfil->usrp_id       = $usuario->usr_id;
+            $perfil->usrp_nombre   = $nameParts[0] ?? '';
+            $perfil->usrp_apellido = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
+            $perfil->usrp_imagen   = $googleUser->getAvatar();
+            $perfil->save();
+
+            $token = $usuario->createToken('auth_token')->plainTextToken;
+            $frontend = env('FRONTEND_URL', 'http://localhost:5000');
+
+            // Incluye usr_id y perfil completo como query params para el frontend (más seguro con JSON, pero así es rápido)
+            return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
+
         } catch (\Exception $e) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Error Google OAuth: ' . $e->getMessage(),
-            ], 500);
+            return response()->json(['status'=>false, 'message'=>'Error Google OAuth: '.$e->getMessage()], 500);
         }
-
-        // 1) Descargar avatar remoto
-        $avatarPath = null;
-        if ($url = $googleUser->getAvatar()) {
-            try {
-                $contents = Http::get($url)->body();
-                $filename = 'avatars/google_' . $googleUser->getId() . '.jpg';
-                Storage::disk('public')->put($filename, $contents);
-                $avatarPath = $filename;
-            } catch (\Exception $e) {
-                // si falla, dejamos NULL y seguimos
-            }
-        }
-
-        // 2) Crear o buscar usuario
-        $usuario = Usuarios::firstOrCreate(
-            ['usr_email' => $googleUser->getEmail()],
-            [
-                'usr_id'       => Usuarios::max('usr_id')
-                                    ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), '0', STR_PAD_LEFT)
-                                    : '1',
-                'usr_user'     => explode('@', $googleUser->getEmail())[0],
-                'usr_password' => Hash::make(Str::random(16)),
-                'usr_estado'   => 'Activo',
-            ]
-        );
-
-        // 3) Crear o actualizar perfil
-        $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
-        $nameParts = explode(' ', $googleUser->getName() ?? '');
-        $perfil->usrp_id       = $usuario->usr_id;
-        $perfil->usrp_nombre   = $nameParts[0] ?? '';
-        $perfil->usrp_apellido = count($nameParts) > 1
-                                 ? implode(' ', array_slice($nameParts, 1))
-                                 : '';
-        $perfil->usrp_imagen   = $avatarPath;  // guardamos solo la ruta
-        $perfil->save();
-
-        // 4) Token + redirect
-        $token    = $usuario->createToken('auth_token')->plainTextToken;
-        $frontend = env('FRONTEND_URL', 'http://localhost:5000');
-        return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
     }
 
-    //──────────────────────────────────────────────
-    // Microsoft OAuth
-    //──────────────────────────────────────────────
-
+    /**
+     * Redirige al login de Microsoft.
+     */
     public function redirectToMicrosoft()
     {
+        // Asegúrate de pedir el scope User.Read para poder leer la foto de perfil
         return Socialite::driver('microsoft')
-                       ->stateless()
-                       ->scopes(['User.Read'])
-                       ->redirect();
+            ->stateless()
+            ->scopes(['User.Read'])
+            ->redirect();
     }
 
+    /**
+     * Maneja el callback de Microsoft e intenta traer la foto de perfil.
+     */
     public function handleMicrosoftCallback()
     {
         try {
@@ -205,34 +197,39 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'status'  => false,
-                'message' => 'Error Microsoft OAuth: ' . $e->getMessage()
+                'message' => 'Error Microsoft OAuth: '.$e->getMessage()
             ], 500);
         }
 
-        // 1) Traer foto binaria de Graph y guardar localmente
-        $avatarPath = null;
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $msUser->token,
-                'Accept'        => 'image/jpeg',
-            ])->get('https://graph.microsoft.com/v1.0/me/photo/$value');
+        // --- Obtener la foto de perfil de Microsoft, si existe
+        $avatar = null;
+        $accessToken = $msUser->token;
+        $graphUrl = 'https://graph.microsoft.com/v1.0/me/photo/$value';
 
-            if ($response->ok()) {
-                $contents = $response->body();
-                $filename = 'avatars/microsoft_' . $msUser->getId() . '.jpg';
-                Storage::disk('public')->put($filename, $contents);
-                $avatarPath = $filename;
+        try {
+            $client = new \GuzzleHttp\Client();
+            $response = $client->get($graphUrl, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Accept'        => 'image/jpg'
+                ],
+                'http_errors' => false // No lanzar excepción si no hay foto
+            ]);
+
+            if ($response->getStatusCode() === 200) {
+                // La foto viene como binario, conviértelo a base64 para guardar o mostrar
+                $avatar = 'data:image/jpeg;base64,' . base64_encode($response->getBody()->getContents());
             }
         } catch (\Exception $e) {
-            // sigue sin avatar
+            $avatar = null;
         }
 
-        // 2) Crear o buscar usuario
+        // Busca o crea usuario
         $usuario = Usuarios::firstOrCreate(
             ['usr_email' => $msUser->getEmail()],
             [
                 'usr_id'       => Usuarios::max('usr_id')
-                                    ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), STR_PAD_LEFT)
+                                    ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), '0', STR_PAD_LEFT)
                                     : '1',
                 'usr_user'     => explode('@', $msUser->getEmail())[0],
                 'usr_password' => Hash::make(Str::random(16)),
@@ -240,7 +237,7 @@ class AuthController extends Controller
             ]
         );
 
-        // 3) Crear o actualizar perfil
+        // Actualiza o crea perfil
         $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
         $nameParts = explode(' ', $msUser->getName() ?? '');
         $perfil->usrp_id       = $usuario->usr_id;
@@ -248,19 +245,17 @@ class AuthController extends Controller
         $perfil->usrp_apellido = count($nameParts) > 1
                                  ? implode(' ', array_slice($nameParts, 1))
                                  : '';
-        $perfil->usrp_imagen   = $avatarPath;
+        $perfil->usrp_imagen   = $avatar; // <- Guarda la foto si existe
         $perfil->save();
 
-        // 4) Token + redirect
+        // Genera token e redirige al frontend
         $token    = $usuario->createToken('auth_token')->plainTextToken;
         $frontend = env('FRONTEND_URL', 'http://localhost:5000');
+
         return Redirect::away("{$frontend}/auth/microsoft/callback?token={$token}");
     }
 
-    //──────────────────────────────────────────────
-    // Obtener datos del usuario autenticado
-    //──────────────────────────────────────────────
-
+    // Cuando recibes el token, usa el endpoint /api/user para obtener usuario+perfil con usr_id
     public function getUserInfo(Request $request)
     {
         $usuario = $request->user();
@@ -277,16 +272,12 @@ class AuthController extends Controller
         ]);
     }
 
-    //──────────────────────────────────────────────
-    // Logout / revocar token
-    //──────────────────────────────────────────────
-
+    /**
+     * Cierra la sesión (revoca token).
+     */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
-        return response()->json([
-            'status'  => true,
-            'message' => 'Sesión cerrada correctamente'
-        ]);
+        return response()->json([ 'status'=>true, 'message'=>'Sesión cerrada correctamente' ]);
     }
 }

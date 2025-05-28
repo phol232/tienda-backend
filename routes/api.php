@@ -57,6 +57,9 @@ Route::post('/register', [AuthController::class, 'register'])->name('register');
 Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle'])->name('auth.google.redirect');
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 
+Route::get('auth/microsoft/redirect', [AuthController::class, 'redirectToMicrosoft']);
+Route::get('auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback']);
+
 
 // Rutas protegidas con Sanctum
 Route::middleware('auth:sanctum')->group(function () {

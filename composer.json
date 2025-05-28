@@ -7,11 +7,14 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "doctrine/dbal": "^4.2",
+        "guzzlehttp/guzzle": "^7.9",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.20",
         "laravel/tinker": "^2.10.1",
         "opcodesio/log-viewer": "^3.17",
+        "socialiteproviders/microsoft": "^4.6",
         "spatie/laravel-tail": "^4.5"
     },
     "require-dev": {
