@@ -9,6 +9,7 @@ return [
     'allowed_origins'       => [
         'http://localhost:5000',
         'https://tiendavir.netlify.app',
+        'https://yamicorp.areallc.tech',
     ],
     'allowed_origins_patterns' => [],
     'allowed_headers'       => ['*'],
