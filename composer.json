@@ -14,6 +14,7 @@
         "laravel/socialite": "^5.20",
         "laravel/tinker": "^2.10.1",
         "opcodesio/log-viewer": "^3.17",
+        "socialiteproviders/manager": "^4.8",
         "socialiteproviders/microsoft": "^4.6",
         "spatie/laravel-tail": "^4.5"
     },

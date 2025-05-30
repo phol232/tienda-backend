@@ -11,6 +11,7 @@ use App\Http\Controllers\Inventario\MovimientosController;
 use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
 use App\Http\Controllers\Inventario\NotificacionAlertaController;
+use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -66,3 +67,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
 });
+
+
+Route::apiResource('metodos-pago', MetodosPagoController::class);
+

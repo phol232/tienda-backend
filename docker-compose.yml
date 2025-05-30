@@ -10,8 +10,6 @@ services:
             - "8000:8000"
         volumes:
             - .:/var/www/html:cached
-            - /var/www/html/vendor
-            - /var/www/html/node_modules
             - /var/www/html/storage/framework/cache
         environment:
             DB_CONNECTION: mysql
