@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ventas_Pagos;
 
 use Illuminate\Http\Request;
 use App\Models\ventas_Pagos\MetodosPago;
+use App\Http\Controllers\Controller;
 
 class MetodosPagoController extends Controller
 {
