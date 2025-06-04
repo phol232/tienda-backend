@@ -2,6 +2,7 @@
 
 namespace App\Models\Clientes;
 
+use App\Models\Pedidos\Pedidos;
 use Illuminate\Database\Eloquent\Model;
 
 class Clientes extends Model
@@ -23,3 +24,4 @@ class Clientes extends Model
             ->withPivot('cli_cat_asoc_id', 'fecha_asociacion');
     }
 }
+

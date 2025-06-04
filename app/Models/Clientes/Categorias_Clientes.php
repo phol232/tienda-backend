@@ -17,3 +17,4 @@ class Categorias_Clientes extends Model
         return $this->hasMany(Cliente_Categoria::class, 'cli_cat_id', 'cli_cat_id');
     }
 }
+

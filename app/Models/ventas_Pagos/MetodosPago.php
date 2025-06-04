@@ -3,15 +3,12 @@
 namespace App\Models\ventas_Pagos;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\ventas_Pagos\Pagos;
 
 class MetodosPago extends Model
 {
-    protected $table = 'Metodos_Pago'; 
-
+    protected $table = 'Metodos_Pago';
     protected $primaryKey = 'met_id';
     public $incrementing = false;
-    protected $keyType = 'string';
     public $timestamps = false;
 
     protected $fillable = [
@@ -20,11 +17,27 @@ class MetodosPago extends Model
         'met_descripcion',
         'met_estado',
         'met_tipo',
-        'met_banco',
+        'met_banco'
     ];
-
-    public function pagos()
+    public function boletas()
     {
-        return $this->hasMany(Pagos::class, 'met_id', 'met_id');
+        return $this->belongsToMany(
+            Boletas::class,
+            'BoletasMetodos',
+            'met_id',
+            'boleta_id'
+        )->withPivot('monto', 'fecha_pago', 'nota_pago');
+    }
+
+    // Métodos de pago usados en facturas
+    public function facturas()
+    {
+        return $this->belongsToMany(
+            Facturas::class,
+            'FacturasMetodos',
+            'met_id',
+            'factura_id'
+        )->withPivot('monto', 'fecha_pago', 'nota_pago');
     }
 }
+

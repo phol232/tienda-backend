@@ -3,6 +3,7 @@
 use App\Http\Controllers\Inventario\TiposMovimientosController;
 use App\Http\Controllers\Seguridad\AuthController;
 use App\Http\Controllers\Clientes\Categoria_ClientesController;
+use App\Http\Controllers\Clientes\ClientesController;
 use App\Http\Controllers\Productos_Proveedores\Categoria_ProveedoresController;
 use App\Http\Controllers\Productos_Proveedores\CategoriaController;
 use App\Http\Controllers\Productos_Proveedores\ProductosController;
@@ -11,14 +12,22 @@ use App\Http\Controllers\Inventario\MovimientosController;
 use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
 use App\Http\Controllers\Inventario\NotificacionAlertaController;
+use App\Http\Controllers\Ventas_Pagos\BoletasController;
+use App\Http\Controllers\Ventas_Pagos\FacturasController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
+use App\Http\Controllers\Pedidos\PedidosController;
 use Illuminate\Support\Facades\Route;
 
 
+// Rutas de Categorías (Clientes, Proveedores, Productos, etc.)
 Route::apiResource('categorias', CategoriaController::class);
 Route::apiResource('categorias-clientes', Categoria_ClientesController::class);
 Route::apiResource('categorias-proveedores', Categoria_ProveedoresController::class);
 Route::apiResource('proveedores', ProveedoresController::class);
+
+// RUTA PARA CRUD DE CLIENTES (aquí faltaría)
+Route::apiResource('clientes', ClientesController::class);
+
 
 // Rutas de Productos
 Route::get('productos/create', [ProductosController::class, 'create'])->name('productos.create_options'); // Para obtener datos para formularios de creación
@@ -68,6 +77,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
 });
 
-
 Route::apiResource('metodos-pago', MetodosPagoController::class);
+Route::apiResource('pedidos', PedidosController::class);
 
+Route::apiResource('boletas', BoletasController::class);
+Route::apiResource('facturas', FacturasController::class);

@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models\Clientes;
 
 use Illuminate\Database\Eloquent\Model;
@@ -22,3 +21,4 @@ class Cliente_Categoria extends Model
         return $this->belongsTo(Categorias_Clientes::class, 'cli_cat_id', 'cli_cat_id');
     }
 }
+
