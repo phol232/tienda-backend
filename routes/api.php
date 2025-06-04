@@ -79,6 +79,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::apiResource('metodos-pago', MetodosPagoController::class);
 Route::apiResource('pedidos', PedidosController::class);
-
+Route::put('/pedidos/{ped_id}/estado', [PedidosController::class, 'updateEstado']);
 Route::apiResource('boletas', BoletasController::class);
 Route::apiResource('facturas', FacturasController::class);

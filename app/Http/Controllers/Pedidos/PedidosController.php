@@ -158,6 +158,20 @@ class PedidosController extends Controller
         }
     }
 
+    public function updateEstado(Request $request, $ped_id)
+    {
+        $request->validate([
+            'ped_estado' => ['required', Rule::in(['Pendiente','Procesando','Enviado','Completado','Cancelado'])],
+        ]);
+
+        DB::table('Pedidos')
+            ->where('ped_id', $ped_id)
+            ->update(['ped_estado' => $request->ped_estado]);
+
+        return response()->json(['message' => 'Estado actualizado'], 200);
+    }
+
+
     /**
      * Eliminar (lógicamente o físicamente) un pedido (usa sp_eliminar_pedido).
      */
