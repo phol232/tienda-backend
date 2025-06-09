@@ -7,11 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class Clientes extends Model
 {
-    protected $table = 'Clientes';
+    protected $table      = 'Clientes';
     protected $primaryKey = 'cli_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
-    public $timestamps = false;
+    public $incrementing  = false;
+    protected $keyType    = 'string';
+    public $timestamps    = false;
+
+    // usa los nombres reales de tus columnas
+    protected $fillable = [
+        'cli_id',
+        'cli_nombre',
+        'cli_apellido',
+    ];
 
     public function pedidos()
     {

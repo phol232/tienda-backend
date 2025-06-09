@@ -12,6 +12,7 @@ use App\Http\Controllers\Inventario\MovimientosController;
 use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
 use App\Http\Controllers\Inventario\NotificacionAlertaController;
+use App\Http\Controllers\Seguridad\UsuariosController;
 use App\Http\Controllers\Ventas_Pagos\BoletasController;
 use App\Http\Controllers\Ventas_Pagos\FacturasController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
@@ -77,8 +78,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
 });
 
+
+Route::get('perfil/{id}', [UsuariosController::class, 'show']);
+Route::put('perfil/{id}', [UsuariosController::class, 'update']);
+
+
 Route::apiResource('metodos-pago', MetodosPagoController::class);
 Route::apiResource('pedidos', PedidosController::class);
 Route::put('/pedidos/{ped_id}/estado', [PedidosController::class, 'updateEstado']);
 Route::apiResource('boletas', BoletasController::class);
 Route::apiResource('facturas', FacturasController::class);
+Route::get('/boletas/{id}/pdf', [BoletasController::class, 'pdf']);
+
+Route::patch('/boletas/{id}/cancelar', [BoletasController::class, 'cancelar']);
+

@@ -1,7 +1,9 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class CreatePagosTable extends Migration
 {
@@ -31,9 +33,10 @@ class CreatePagosTable extends Migration
             $table->foreign('usr_id')
                 ->references('usr_id')->on('usuarios')
                 ->onDelete('restrict')->onUpdate('cascade');
-
-            $table->check('boleta_id IS NOT NULL OR factura_id IS NOT NULL');
         });
+
+        // Agrega el constraint CHECK usando SQL puro
+        DB::statement('ALTER TABLE pagos ADD CONSTRAINT check_boleta_factura CHECK (boleta_id IS NOT NULL OR factura_id IS NOT NULL)');
     }
 
     public function down(): void

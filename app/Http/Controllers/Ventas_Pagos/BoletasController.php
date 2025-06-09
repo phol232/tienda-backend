@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ventas_Pagos;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\ventas_Pagos\Boletas;
@@ -98,37 +99,67 @@ class BoletasController extends Controller
         }
     }
 
-    // Eliminar boleta y restaurar stock
-    public function destroy($id)
+    public function cancelar($id)
     {
         DB::beginTransaction();
-        try {
-            $boleta = Boletas::with('pedido.detalles')->findOrFail($id);
-            $pedido = $boleta->pedido;
 
-            // Restaurar stock de los productos
-            foreach ($pedido->detalles as $detalle) {
-                $producto = Productos::findOrFail($detalle->prod_id);
-                $producto->pro_stock += $detalle->det_cantidad;
-                $producto->save();
+        try {
+            $boleta = Boletas::with([
+                'pedido.detalles.producto'
+            ])->findOrFail($id);
+
+            if ($boleta->boleta_estado === 'Cancelado') {
+                return response()->json([
+                    'message' => 'La boleta ya está en estado Cancelado.'
+                ], 400);
             }
 
-            // Eliminar relaciones en la pivote
-            $boleta->metodosPago()->detach();
+            foreach ($boleta->pedido->detalles as $detalle) {
+                $prod = $detalle->producto;
+                $prod->pro_stock += $detalle->det_cantidad;
+                $prod->save();
+            }
 
-            // Eliminar boleta
-            $boleta->delete();
+            $boleta->boleta_estado = 'Cancelado';
+            $boleta->save();
 
             DB::commit();
+
             return response()->json([
-                'message' => 'Boleta eliminada y stock restaurado correctamente.'
-            ]);
+                'message' => 'Boleta cancelada correctamente.',
+                'boleta_id' => $boleta->boleta_id
+            ], 200);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Error al eliminar la boleta.',
+                'message' => 'Error al cancelar la boleta.',
                 'error'   => $e->getMessage()
             ], 500);
         }
     }
+    public function pdf($id)
+    {
+        try {
+            $boleta = Boletas::with([
+                'metodosPago',
+                'pedido.detalles.producto',
+                'pedido.cliente'
+            ])->findOrFail($id);
+
+            $boletaArray = $boleta->toArray();
+
+            $response = Http::post('http://127.0.0.1:8001/generar-boleta', $boletaArray);
+
+            return response($response->body(), 200)
+                ->header('Content-Type', 'application/pdf')
+                ->header('Content-Disposition', 'attachment; filename="boleta-'.$id.'.pdf"');
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'No se pudo generar el PDF de la boleta.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

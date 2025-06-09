@@ -57,4 +57,8 @@ class Pedidos extends Model
         $this->ped_total     = $subtotal + $impuestos - $descuento;
         $this->saveQuietly();
     }
+    public function cliente()
+    {
+        return $this->belongsTo(\App\Models\Clientes\Clientes::class, 'cli_id', 'cli_id');
+    }
 }

@@ -53,4 +53,8 @@ class PedidosDetalle extends Model
             }
         });
     }
+    public function producto()
+    {
+        return $this->belongsTo(\App\Models\Productos_Proveedores\Productos::class, 'prod_id', 'pro_id');
+    }
 }
