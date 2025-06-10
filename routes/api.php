@@ -15,6 +15,7 @@ use App\Http\Controllers\Inventario\NotificacionAlertaController;
 use App\Http\Controllers\Seguridad\UsuariosController;
 use App\Http\Controllers\Ventas_Pagos\BoletasController;
 use App\Http\Controllers\Ventas_Pagos\FacturasController;
+use App\Http\Controllers\Ventas_Pagos\MercadoPagoController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
 use App\Http\Controllers\Pedidos\PedidosController;
 use Illuminate\Support\Facades\Route;
@@ -91,4 +92,13 @@ Route::apiResource('facturas', FacturasController::class);
 Route::get('/boletas/{id}/pdf', [BoletasController::class, 'pdf']);
 
 Route::patch('/boletas/{id}/cancelar', [BoletasController::class, 'cancelar']);
+
+Route::post('/boletas/procesar-microservicio', [BoletasController::class, 'procesarConMicroservicio']);
+Route::get('/boletas/payment/{paymentId}', [BoletasController::class, 'buscarPorPaymentId']);
+
+Route::prefix('mercadopago')->name('mercadopago.')->group(function () {
+    Route::post('/create-preference', [MercadoPagoController::class, 'createPreference']);
+    Route::get('/payment/{paymentId}', [MercadoPagoController::class, 'getPaymentInfo']);
+    Route::post('/webhook', [MercadoPagoController::class, 'webhook']);
+});
 

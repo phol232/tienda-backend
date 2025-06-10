@@ -21,6 +21,7 @@ class Boletas extends Model
         'boleta_total',
         'boleta_estado',
         'boleta_notas',
+        'payment_id',
         'ped_id'
     ];
 
