@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models\ventas_Pagos;
 
 use App\Models\Pedidos\Pedidos;
@@ -25,7 +26,16 @@ class Boletas extends Model
         'ped_id'
     ];
 
-    // Relación con Metodos de Pago (muchos a muchos)
+    /**
+     * Casts fields to appropriate types
+     */
+    protected $casts = [
+        'boleta_fecha' => 'datetime',
+    ];
+
+    /**
+     * Relación con Métodos de Pago (muchos a muchos)
+     */
     public function metodosPago()
     {
         return $this->belongsToMany(
@@ -36,10 +46,11 @@ class Boletas extends Model
         )->withPivot('monto', 'referencia', 'fecha_registro');
     }
 
+    /**
+     * Relación con Pedido
+     */
     public function pedido()
     {
         return $this->belongsTo(Pedidos::class, 'ped_id', 'ped_id');
     }
-
 }
-

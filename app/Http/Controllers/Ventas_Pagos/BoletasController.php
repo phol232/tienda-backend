@@ -3,16 +3,15 @@
 namespace App\Http\Controllers\Ventas_Pagos;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use App\Models\ventas_Pagos\Boletas;
 use App\Models\Pedidos\Pedidos;
-use App\Models\Productos_Proveedores\Productos;
 
 class BoletasController extends Controller
 {
-    // Listar boletas con relaciones
+    // Listar todas las boletas con sus relaciones
     public function index()
     {
         try {
@@ -31,29 +30,27 @@ class BoletasController extends Controller
         }
     }
 
-    // Crear boleta y asociar pagos, descuenta stock
+    // Crear boleta, asociar pagos y descontar stock
     public function store(Request $request)
     {
         $request->validate([
-            'ped_id'              => 'required|exists:Pedidos,ped_id',
-            'boleta_numero'       => 'required|string|max:20',
-            'boleta_notas'        => 'nullable|string',
-            'payment_id'          => 'nullable|string', // Para MercadoPago
-            'pagos'               => 'required|array|min:1',
-            'pagos.*.met_id'      => 'required|exists:Metodos_Pago,met_id',
-            'pagos.*.monto'       => 'required|numeric|min:0.01',
-            'pagos.*.fecha_pago'  => 'required|date',
-            'pagos.*.nota_pago'   => 'nullable|string',
+            'ped_id'             => 'required|exists:Pedidos,ped_id',
+            'boleta_numero'      => 'required|string|max:20',
+            'boleta_notas'       => 'nullable|string',
+            'payment_id'         => 'nullable|string',
+            'pagos'              => 'required|array|min:1',
+            'pagos.*.met_id'     => 'required|exists:Metodos_Pago,met_id',
+            'pagos.*.monto'      => 'required|numeric|min:0.01',
+            'pagos.*.fecha_pago' => 'required|date',
+            'pagos.*.nota_pago'  => 'nullable|string',
         ]);
 
         DB::beginTransaction();
         try {
             $pedido = Pedidos::with('detalles.producto')->findOrFail($request->ped_id);
-
-            // Generar id único (máximo 15 caracteres)
             $boleta_id = substr(uniqid('BOL-'), 0, 15);
 
-            $boleta = new Boletas([
+            $boleta = Boletas::create([
                 'boleta_id'        => $boleta_id,
                 'boleta_numero'    => $request->boleta_numero,
                 'boleta_fecha'     => now(),
@@ -63,17 +60,16 @@ class BoletasController extends Controller
                 'boleta_total'     => $pedido->ped_total,
                 'boleta_estado'    => 'Emitido',
                 'boleta_notas'     => $request->boleta_notas,
-                'payment_id'       => $request->payment_id, // Guardar payment_id de MercadoPago
+                'payment_id'       => $request->payment_id,
                 'ped_id'           => $pedido->ped_id,
             ]);
-            $boleta->save();
 
             // Registrar métodos de pago
             foreach ($request->pagos as $pago) {
                 $boleta->metodosPago()->attach($pago['met_id'], [
                     'monto'          => $pago['monto'],
                     'referencia'     => $pago['nota_pago'] ?? null,
-                    'fecha_registro' => $pago['fecha_pago'] ?? now(),
+                    'fecha_registro' => $pago['fecha_pago'],
                 ]);
             }
 
@@ -81,26 +77,22 @@ class BoletasController extends Controller
             foreach ($pedido->detalles as $detalle) {
                 $producto = $detalle->producto;
                 if ($producto->pro_stock < $detalle->det_cantidad) {
-                    throw new \Exception("Stock insuficiente para el producto {$producto->pro_nombre}");
+                    throw new \Exception("Stock insuficiente para {$producto->pro_nombre}");
                 }
-                $producto->pro_stock -= $detalle->det_cantidad;
-                $producto->save();
+                $producto->decrement('pro_stock', $detalle->det_cantidad);
             }
 
             DB::commit();
 
-            // Cargar la boleta con todas sus relaciones para devolverla completa
-            $boletaCompleta = Boletas::with([
+            $boletaFull = Boletas::with([
                 'metodosPago',
                 'pedido.detalles.producto',
                 'pedido.cliente'
-            ])->find($boleta->boleta_id);
+            ])->findOrFail($boleta_id);
 
             return response()->json([
-                'message'    => 'Boleta registrada exitosamente',
-                'boleta_id'  => $boleta->boleta_id,
-                'boleta_numero' => $boleta->boleta_numero,
-                'boleta'     => $boletaCompleta
+                'message' => 'Boleta registrada exitosamente',
+                'boleta'  => $boletaFull
             ], 201);
 
         } catch (\Exception $e) {
@@ -112,7 +104,7 @@ class BoletasController extends Controller
         }
     }
 
-    // Mostrar una boleta específica
+    // Mostrar boleta específica
     public function show($id)
     {
         try {
@@ -135,145 +127,128 @@ class BoletasController extends Controller
     public function cancelar($id)
     {
         DB::beginTransaction();
-
         try {
-            $boleta = Boletas::with([
-                'pedido.detalles.producto'
-            ])->findOrFail($id);
+            $boleta = Boletas::with('pedido.detalles.producto')->findOrFail($id);
 
             if ($boleta->boleta_estado === 'Cancelado') {
-                return response()->json([
-                    'message' => 'La boleta ya está en estado Cancelado.'
-                ], 400);
+                return response()->json(['message' => 'La boleta ya está cancelada.'], 400);
             }
 
-            // Devolver stock
             foreach ($boleta->pedido->detalles as $detalle) {
-                $producto = $detalle->producto;
-                $producto->pro_stock += $detalle->det_cantidad;
-                $producto->save();
+                $detalle->producto->increment('pro_stock', $detalle->det_cantidad);
             }
 
-            $boleta->boleta_estado = 'Cancelado';
-            $boleta->save();
-
+            $boleta->update(['boleta_estado' => 'Cancelado']);
             DB::commit();
 
-            return response()->json([
-                'message' => 'Boleta cancelada correctamente.',
-                'boleta_id' => $boleta->boleta_id
-            ], 200);
+            return response()->json(['message' => 'Boleta cancelada correctamente', 'boleta_id' => $id], 200);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'message' => 'Error al cancelar la boleta.',
-                'error'   => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Error al cancelar la boleta.', 'error' => $e->getMessage()], 500);
         }
     }
 
-    // Generar PDF usando el microservicio
-    public function pdf($id)
+    public function emitirSunatXml($id)
     {
         try {
-            $boleta = Boletas::with([
-                'metodosPago',
-                'pedido.detalles.producto',
-                'pedido.cliente'
-            ])->findOrFail($id);
+            // 1) Recuperar boleta con relaciones
+            $boleta   = Boletas::with(['pedido.cliente', 'pedido.detalles.producto'])->findOrFail($id);
+            $cliente  = $boleta->pedido->cliente;
+            $detalles = $boleta->pedido->detalles;
 
-            // Buscar payment_id
-            $paymentId = $boleta->payment_id ?? null;
+            // 2) Preparar datos para la vista
+            $serie  = substr($boleta->boleta_numero, 0, 4);
+            $numero = intval(substr($boleta->boleta_numero, 4));
+            $fecha  = $boleta->boleta_fecha->format('Y-m-d');
 
-            if (!$paymentId) {
-                return response()->json([
-                    'message' => 'No se encuentra el payment_id para la boleta. Esta boleta no se procesó con MercadoPago.'
-                ], 400);
-            }
+            // 3) Renderizar la vista Blade que genera el UBL/XML
+            $xml = view('sunat.boleta', compact('boleta', 'cliente', 'detalles', 'serie', 'numero', 'fecha'))
+                ->render();
 
-            // Preparar datos para el microservicio
-            $boletaData = [
-                'boleta_id' => $boleta->boleta_id,
-                'boleta_numero' => $boleta->boleta_numero,
-                'boleta_fecha' => $boleta->boleta_fecha,
-                'boleta_total' => $boleta->boleta_total,
-                'boleta_subtotal' => $boleta->boleta_subtotal,
-                'boleta_impuestos' => $boleta->boleta_impuestos,
-                'boleta_descuento' => $boleta->boleta_descuento,
-                'cliente' => $boleta->pedido->cliente ?? null,
-                'detalles' => $boleta->pedido->detalles ?? [],
-                'metodos_pago' => $boleta->metodosPago ?? []
+            // 4) Codificar en Base64
+            $xmlBase64 = base64_encode($xml);
+
+            // 5) Armar payload
+            $body = [
+                'personaId'    => config('services.apisunat.persona_id'),
+                'personaToken' => config('services.apisunat.token'),
+                'contentFile'  => $xmlBase64,
+                'fileName'     => "{$serie}-" . str_pad($numero, 8, '0', STR_PAD_LEFT) . ".xml",
             ];
 
-            // Llamar al microservicio (ajusta la URL según tu configuración)
-            $microservicioUrl = env('MICROSERVICIO_FACTURACION_URL', 'http://127.0.0.1:3000');
+            // 6) Enviar al endpoint
+            $response = Http::withHeaders([
+                'Accept'       => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
+                ->timeout(60)
+                ->post(config('services.apisunat.xml_url'), $body);
 
-            $response = Http::timeout(30)->post($microservicioUrl . '/facturar-pago', [
-                'payment_id' => $paymentId,
-                'boleta' => $boletaData,
-            ]);
-
-            if ($response->successful()) {
-                return response($response->body(), 200)
-                    ->header('Content-Type', 'application/pdf')
-                    ->header('Content-Disposition', 'attachment; filename="boleta-'.$boleta->boleta_numero.'.pdf"');
-            } else {
+            // 7) Validar resultado
+            if (! $response->successful()) {
                 return response()->json([
-                    'message' => 'Error del microservicio de facturación.',
-                    'error' => $response->body()
+                    'message' => 'Error al enviar XML a APISUNAT',
+                    'error'   => $response->json() ?: $response->body(),
                 ], 500);
             }
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'No se pudo generar el PDF de la boleta.',
-                'error'   => $e->getMessage()
-            ], 500);
-        }
-    }
+            $data = $response->json();
 
-    // Procesar con microservicio (llamado desde el frontend)
-    public function procesarConMicroservicio(Request $request)
-    {
-        try {
-            $paymentId = $request->payment_id;
-            $boleta = $request->boleta;
-
-            if (!$paymentId || !$boleta) {
-                return response()->json([
-                    'error' => 'payment_id y boleta son requeridos'
-                ], 400);
-            }
-
-            // Llamar al microservicio
-            $microservicioUrl = env('MICROSERVICIO_FACTURACION_URL', 'http://127.0.0.1:3000');
-
-            $response = Http::timeout(30)->post($microservicioUrl . '/procesar', [
-                'payment_id' => $paymentId,
-                'boleta_data' => $boleta
-            ]);
-
-            if ($response->successful()) {
-                return response($response->body())
+            // 8) Si devuelve PDF en Base64
+            if (! empty($data['contentFile'])) {
+                $pdf = base64_decode($data['contentFile']);
+                return response($pdf, 200)
                     ->header('Content-Type', 'application/pdf')
-                    ->header('Content-Disposition', 'attachment; filename="boleta-'.$boleta['boleta_numero'].'.pdf"');
+                    ->header('Content-Disposition', 'attachment; filename="' . ($serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT)) . '.pdf"');
             }
 
+            // 9) Si devuelve URL de descarga
+            if (! empty($data['urlPdf'])) {
+                return response()->json([
+                    'message' => 'Boleta generada, descarga aquí',
+                    'url'     => $data['urlPdf'],
+                ], 200);
+            }
+
+            // 10) Respuesta genérica
             return response()->json([
-                'error' => 'Error en microservicio',
-                'details' => $response->body()
-            ], 500);
+                'message'  => 'Boleta enviada correctamente a APISUNAT',
+                'response' => $data,
+            ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Error interno del servidor',
-                'message' => $e->getMessage()
+                'message' => 'Error interno al emitir boleta',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
 
-    // Buscar boleta por payment_id (útil para el microservicio)
+    public function descargarPdfSunat($documentId, $fileName)
+    {
+        $url = "https://back.apisunat.com/documents/{$documentId}/getPDF/A4/{$fileName}.pdf";
+        $response = Http::withHeaders([
+            'personaId'    => config('services.apisunat.persona_id'),
+            'Authorization' => 'Bearer '.config('services.apisunat.token'),
+        ])
+            ->accept('application/pdf')
+            ->get($url);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'message' => 'Error al descargar PDF de APISUNAT',
+                'error'   => $response->body()
+            ], 500);
+        }
+
+        return response($response->body(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "attachment; filename=\"{$fileName}.pdf\"");
+    }
+
+
+    // Buscar boleta por payment_id
     public function buscarPorPaymentId($paymentId)
     {
         try {
@@ -281,21 +256,14 @@ class BoletasController extends Controller
                 'metodosPago',
                 'pedido.detalles.producto',
                 'pedido.cliente'
-            ])->where('payment_id', $paymentId)->first();
-
-            if (!$boleta) {
-                return response()->json([
-                    'message' => 'No se encontró boleta con ese payment_id'
-                ], 404);
-            }
+            ])->where('payment_id', $paymentId)->firstOrFail();
 
             return response()->json($boleta, 200);
-
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al buscar la boleta.',
+                'message' => 'Boleta no encontrada por payment_id.',
                 'error'   => $e->getMessage()
-            ], 500);
+            ], 404);
         }
     }
 }

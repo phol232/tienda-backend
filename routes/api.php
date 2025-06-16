@@ -14,12 +14,12 @@ use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
 use App\Http\Controllers\Inventario\NotificacionAlertaController;
 use App\Http\Controllers\Seguridad\UsuariosController;
 use App\Http\Controllers\Ventas_Pagos\BoletasController;
+use App\Http\Controllers\Ventas_Pagos\FacturacionController;
 use App\Http\Controllers\Ventas_Pagos\FacturasController;
 use App\Http\Controllers\Ventas_Pagos\MercadoPagoController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
 use App\Http\Controllers\Pedidos\PedidosController;
 use Illuminate\Support\Facades\Route;
-
 
 // Rutas de Categorías (Clientes, Proveedores, Productos, etc.)
 Route::apiResource('categorias', CategoriaController::class);
@@ -30,41 +30,31 @@ Route::apiResource('proveedores', ProveedoresController::class);
 // RUTA PARA CRUD DE CLIENTES (aquí faltaría)
 Route::apiResource('clientes', ClientesController::class);
 
-
 // Rutas de Productos
-Route::get('productos/create', [ProductosController::class, 'create'])->name('productos.create_options'); // Para obtener datos para formularios de creación
-Route::get('productos/buscar-por-nombre', [ProductosController::class, 'searchByName'])->name('productos.searchByName'); // Para búsqueda por nombre
+Route::get('productos/create', [ProductosController::class, 'create'])->name('productos.create_options');
+Route::get('productos/buscar-por-nombre', [ProductosController::class, 'searchByName'])->name('productos.searchByName');
 Route::apiResource('productos', ProductosController::class);
-
 
 Route::get('tipos-movimientos', [TiposMovimientosController::class, 'index'])->name('tipos-movimientos.index');
 Route::get('tipos-movimientos/{id}', [TiposMovimientosController::class, 'show'])->name('tipos-movimientos.show');
 
-
 // Grupo de rutas para el módulo de Inventario
 Route::prefix('inventario')->name('inventario.')->group(function () {
     Route::apiResource('movimientos', MovimientosController::class);
-
     Route::apiResource('configuracion-alertas', ConfiguracionAlertaController::class)->names('configuracionAlertas');
-
     Route::apiResource('alertas-stock', AlertaStockController::class)
         ->except(['store'])
         ->names('alertasStock');
     Route::post('alertas-stock/manual', [AlertaStockController::class, 'storeManualAlerta'])
         ->name('alertasStock.storeManual');
-
     Route::apiResource('notificaciones-alertas', NotificacionAlertaController::class)
         ->except(['destroy'])
         ->names('notificacionesAlertas');
-
     Route::get('productos/lista', [ProductosController::class, 'index'])->name('productos.lista');
 });
 
-
-
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register'])->name('register');
-
 
 Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle'])->name('auth.google.redirect');
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback'])->name('auth.google.callback');
@@ -72,17 +62,14 @@ Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallbac
 Route::get('auth/microsoft/redirect', [AuthController::class, 'redirectToMicrosoft']);
 Route::get('auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback']);
 
-
 // Rutas protegidas con Sanctum
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
 });
 
-
 Route::get('perfil/{id}', [UsuariosController::class, 'show']);
 Route::put('perfil/{id}', [UsuariosController::class, 'update']);
-
 
 Route::apiResource('metodos-pago', MetodosPagoController::class);
 Route::apiResource('pedidos', PedidosController::class);
@@ -96,9 +83,18 @@ Route::patch('/boletas/{id}/cancelar', [BoletasController::class, 'cancelar']);
 Route::post('/boletas/procesar-microservicio', [BoletasController::class, 'procesarConMicroservicio']);
 Route::get('/boletas/payment/{paymentId}', [BoletasController::class, 'buscarPorPaymentId']);
 
-Route::prefix('mercadopago')->name('mercadopago.')->group(function () {
-    Route::post('/create-preference', [MercadoPagoController::class, 'createPreference']);
-    Route::get('/payment/{paymentId}', [MercadoPagoController::class, 'getPaymentInfo']);
-    Route::post('/webhook', [MercadoPagoController::class, 'webhook']);
-});
+// Sólo index, store y show de boletas
+Route::apiResource('boletas', BoletasController::class)
+    ->only(['index', 'store', 'show']);
 
+// Cancelar boleta
+Route::patch('boletas/{id}/cancelar', [BoletasController::class, 'cancelar'])
+    ->name('boletas.cancelar');
+
+Route::post('facturacion/emitir', [FacturacionController::class, 'emitirBoleta']);
+
+Route::post('facturacion/emitir-frontend', [FacturacionController::class, 'emitirBoletaFrontend']);
+
+Route::post('facturacion/pdf', [FacturacionController::class, 'generarPdf']);
+
+Route::post('facturacion/emitir-replica-postman', [FacturacionController::class, 'emitirBoletaReplicaPostman']);

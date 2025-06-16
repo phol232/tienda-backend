@@ -47,7 +47,26 @@ return [
         'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
         'redirect'      => env('MICROSOFT_REDIRECT_URI'),
         'tenant'        => env('MICROSOFT_TENANT', 'common'),
-        'guzzle'        => [ 'verify' => false ],  
+        'guzzle'        => [ 'verify' => false ],
     ],
 
+    'apisunat' => [
+        'persona_id' => env('APISUNAT_PERSONA_ID'),
+        'token'      => env('APISUNAT_PERSONA_TOKEN'),
+        'xml_url'    => env('APISUNAT_XML_URL'),
+        'ruc'        => env('APISUNAT_RUC'),
+    ],
+    'apisperu' => [
+        'base_url'         => env('APISPERU_BASE_URL'),
+        'email'            => env('APISPERU_EMAIL'),
+        'password'         => env('APISPERU_PASSWORD'),
+        'company_ruc'      => env('APISPERU_RUC'),
+        'company_name'     => env('APISPERU_NAME'),
+        'company_trade'    => env('APISPERU_TRADE'),
+        'company_address'  => env('APISPERU_COMPANY_ADDRESS'),
+        'company_province' => env('APISPERU_COMPANY_PROVINCE'),
+        'company_department' => env('APISPERU_COMPANY_DEPARTMENT'),
+        'company_district'   => env('APISPERU_COMPANY_DISTRICT'),
+        'company_ubigeo'     => env('APISPERU_COMPANY_UBIGEO'),
+    ],
 ];

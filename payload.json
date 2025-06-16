@@ -1,0 +1,79 @@
+{
+    "ublVersion": "2.1",
+    "tipoOperacion": "0101",
+    "tipoDoc": "03",
+    "serie": "B001",
+    "correlativo": "07374712",
+    "fechaEmision": "2025-06-15T17:09:44-05:00",
+    "formaPago": {
+        "moneda": "PEN",
+        "tipo": "Contado"
+    },
+    "tipoMoneda": "PEN",
+    "client": {
+        "tipoDoc": "1",
+        "numDoc": "00000000",
+        "rznSocial": "Carlos Genérico",
+        "address": {
+            "direccion": "Direccion cliente",
+            "provincia": "LIMA",
+            "departamento": "LIMA",
+            "distrito": "LIMA",
+            "ubigueo": "150101"
+        }
+    },
+    "company": {
+        "ruc": 10728908420,
+        "razonSocial": "Comercializadora XYZ S.A.C.",
+        "nombreComercial": "Comercializadora XYZ S.A.C.",
+        "address": {
+            "direccion": "Calle Huayna Capac 450",
+            "provincia": "LIMA",
+            "departamento": "LIMA",
+            "distrito": "LIMA",
+            "ubigueo": "150101"
+        }
+    },
+    "mtoOperGravadas": 4.20,
+    "mtoIGV": 0.76,
+    "valorVenta": 4.20,
+    "totalImpuestos": 0.76,
+    "subTotal": 4.96,
+    "mtoImpVenta": 4.96,
+    "details": [
+        {
+            "codProducto": "PROD-004",
+            "unidad": "NIU",
+            "descripcion": "Papaya",
+            "cantidad": 1,
+            "mtoValorUnitario": 1.02,
+            "mtoValorVenta": 1.20,
+            "mtoBaseIgv": 1.20,
+            "porcentajeIgv": 18,
+            "igv": 0.22,
+            "tipAfeIgv": 10,
+            "totalImpuestos": 0.22,
+            "mtoPrecioUnitario": 1.42
+        },
+        {
+            "codProducto": "PROD-006",
+            "unidad": "NIU",
+            "descripcion": "Fanta",
+            "cantidad": 1,
+            "mtoValorUnitario": 2.54,
+            "mtoValorVenta": 3.00,
+            "mtoBaseIgv": 3.00,
+            "porcentajeIgv": 18,
+            "igv": 0.54,
+            "tipAfeIgv": 10,
+            "totalImpuestos": 0.54,
+            "mtoPrecioUnitario": 3.54
+        }
+    ],
+    "legends": [
+        {
+            "code": "1000",
+            "value": "CUATRO CON 96/100 SOLES"
+        }
+    ]
+}
