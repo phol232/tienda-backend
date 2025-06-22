@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Inventario\TiposMovimientosController;
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Seguridad\AuthController;
 use App\Http\Controllers\Clientes\Categoria_ClientesController;
 use App\Http\Controllers\Clientes\ClientesController;
@@ -8,9 +8,10 @@ use App\Http\Controllers\Productos_Proveedores\Categoria_ProveedoresController;
 use App\Http\Controllers\Productos_Proveedores\CategoriaController;
 use App\Http\Controllers\Productos_Proveedores\ProductosController;
 use App\Http\Controllers\Productos_Proveedores\ProveedoresController;
+use App\Http\Controllers\Inventario\TiposMovimientosController;
 use App\Http\Controllers\Inventario\MovimientosController;
-use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\ConfiguracionAlertaController;
+use App\Http\Controllers\Inventario\AlertaStockController;
 use App\Http\Controllers\Inventario\NotificacionAlertaController;
 use App\Http\Controllers\Seguridad\UsuariosController;
 use App\Http\Controllers\Ventas_Pagos\BoletasController;
@@ -19,29 +20,35 @@ use App\Http\Controllers\Ventas_Pagos\FacturasController;
 use App\Http\Controllers\Ventas_Pagos\MercadoPagoController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
 use App\Http\Controllers\Pedidos\PedidosController;
-use Illuminate\Support\Facades\Route;
 
-// Rutas de Categorías (Clientes, Proveedores, Productos, etc.)
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+// —— Catálogos y CRUDs ——
 Route::apiResource('categorias', CategoriaController::class);
 Route::apiResource('categorias-clientes', Categoria_ClientesController::class);
 Route::apiResource('categorias-proveedores', Categoria_ProveedoresController::class);
 Route::apiResource('proveedores', ProveedoresController::class);
-
-// RUTA PARA CRUD DE CLIENTES (aquí faltaría)
 Route::apiResource('clientes', ClientesController::class);
 
-// Rutas de Productos
-Route::get('productos/create', [ProductosController::class, 'create'])->name('productos.create_options');
-Route::get('productos/buscar-por-nombre', [ProductosController::class, 'searchByName'])->name('productos.searchByName');
+Route::get('productos/create', [ProductosController::class, 'create'])
+    ->name('productos.create_options');
+Route::get('productos/buscar-por-nombre', [ProductosController::class, 'searchByName'])
+    ->name('productos.searchByName');
 Route::apiResource('productos', ProductosController::class);
 
-Route::get('tipos-movimientos', [TiposMovimientosController::class, 'index'])->name('tipos-movimientos.index');
-Route::get('tipos-movimientos/{id}', [TiposMovimientosController::class, 'show'])->name('tipos-movimientos.show');
+Route::get('tipos-movimientos', [TiposMovimientosController::class, 'index'])
+    ->name('tipos-movimientos.index');
+Route::get('tipos-movimientos/{id}', [TiposMovimientosController::class, 'show'])
+    ->name('tipos-movimientos.show');
 
-// Grupo de rutas para el módulo de Inventario
 Route::prefix('inventario')->name('inventario.')->group(function () {
     Route::apiResource('movimientos', MovimientosController::class);
-    Route::apiResource('configuracion-alertas', ConfiguracionAlertaController::class)->names('configuracionAlertas');
+    Route::apiResource('configuracion-alertas', ConfiguracionAlertaController::class)
+        ->names('configuracionAlertas');
     Route::apiResource('alertas-stock', AlertaStockController::class)
         ->except(['store'])
         ->names('alertasStock');
@@ -50,51 +57,58 @@ Route::prefix('inventario')->name('inventario.')->group(function () {
     Route::apiResource('notificaciones-alertas', NotificacionAlertaController::class)
         ->except(['destroy'])
         ->names('notificacionesAlertas');
-    Route::get('productos/lista', [ProductosController::class, 'index'])->name('productos.lista');
+    Route::get('productos/lista', [ProductosController::class, 'index'])
+        ->name('productos.lista');
 });
 
-Route::post('/login', [AuthController::class, 'login'])->name('login');
-Route::post('/register', [AuthController::class, 'register'])->name('register');
+Route::apiResource('metodos-pago', MetodosPagoController::class);
+Route::apiResource('pedidos', PedidosController::class);
+Route::put('pedidos/{ped_id}/estado', [PedidosController::class, 'updateEstado']);
 
-Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle'])->name('auth.google.redirect');
-Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback'])->name('auth.google.callback');
+Route::apiResource('boletas', BoletasController::class)
+    ->only(['index','store','show']);
+Route::get('boletas/{id}/pdf', [BoletasController::class, 'pdf']);
+Route::patch('boletas/{id}/cancelar', [BoletasController::class, 'cancelar'])
+    ->name('boletas.cancelar');
+Route::post('boletas/procesar-microservicio', [BoletasController::class,'procesarConMicroservicio']);
+Route::get('boletas/payment/{paymentId}', [BoletasController::class,'buscarPorPaymentId']);
 
-Route::get('auth/microsoft/redirect', [AuthController::class, 'redirectToMicrosoft']);
-Route::get('auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback']);
-
-// Rutas protegidas con Sanctum
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    Route::get('/user', [AuthController::class, 'getUserInfo'])->name('user.info');
-});
+Route::apiResource('facturas', FacturasController::class);
+Route::post('facturacion/emitir', [FacturacionController::class, 'emitirBoleta']);
+Route::post('facturacion/emitir-frontend', [FacturacionController::class, 'emitirBoletaFrontend']);
+Route::post('facturacion/pdf', [FacturacionController::class, 'generarPdf']);
+Route::post('facturacion/emitir-replica-postman', [FacturacionController::class, 'emitirBoletaReplicaPostman']);
 
 Route::get('perfil/{id}', [UsuariosController::class, 'show']);
 Route::put('perfil/{id}', [UsuariosController::class, 'update']);
 
-Route::apiResource('metodos-pago', MetodosPagoController::class);
-Route::apiResource('pedidos', PedidosController::class);
-Route::put('/pedidos/{ped_id}/estado', [PedidosController::class, 'updateEstado']);
-Route::apiResource('boletas', BoletasController::class);
-Route::apiResource('facturas', FacturasController::class);
-Route::get('/boletas/{id}/pdf', [BoletasController::class, 'pdf']);
+// —— Autenticación ——
+// Login / Register
+Route::post('login',    [AuthController::class, 'login'])->name('login');
+Route::post('register', [AuthController::class, 'register'])->name('register');
 
-Route::patch('/boletas/{id}/cancelar', [BoletasController::class, 'cancelar']);
+// Google OAuth
+Route::get('auth/google/redirect', [AuthController::class, 'redirectToGoogle'])
+    ->name('auth.google.redirect');
+Route::get('auth/google/callback', [AuthController::class, 'handleGoogleCallback'])
+    ->name('auth.google.callback');
 
-Route::post('/boletas/procesar-microservicio', [BoletasController::class, 'procesarConMicroservicio']);
-Route::get('/boletas/payment/{paymentId}', [BoletasController::class, 'buscarPorPaymentId']);
+// Microsoft OAuth
+Route::get('auth/microsoft/redirect', [AuthController::class, 'redirectToMicrosoft'])
+    ->name('auth.microsoft.redirect');
+Route::get('auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback'])
+    ->name('auth.microsoft.callback');
 
-// Sólo index, store y show de boletas
-Route::apiResource('boletas', BoletasController::class)
-    ->only(['index', 'store', 'show']);
+Route::get('auth/approve/{id}', [AuthController::class, 'approve'])
+    ->name('auth.approve')
+    ->middleware('signed');
 
-// Cancelar boleta
-Route::patch('boletas/{id}/cancelar', [BoletasController::class, 'cancelar'])
-    ->name('boletas.cancelar');
+Route::get('auth/approve-register/{id}', [AuthController::class, 'approveRegister'])
+    ->name('auth.approveRegister')
+    ->middleware('signed');
 
-Route::post('facturacion/emitir', [FacturacionController::class, 'emitirBoleta']);
-
-Route::post('facturacion/emitir-frontend', [FacturacionController::class, 'emitirBoletaFrontend']);
-
-Route::post('facturacion/pdf', [FacturacionController::class, 'generarPdf']);
-
-Route::post('facturacion/emitir-replica-postman', [FacturacionController::class, 'emitirBoletaReplicaPostman']);
+// Rutas protegidas por Sanctum
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('logout',   [AuthController::class, 'logout'])->name('logout');
+    Route::get('user',      [AuthController::class, 'getUserInfo'])->name('user.info');
+});

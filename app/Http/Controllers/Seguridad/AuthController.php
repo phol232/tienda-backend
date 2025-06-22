@@ -2,17 +2,23 @@
 
 namespace App\Http\Controllers\Seguridad;
 
-use App\Models\Seguridad\Usuarios;
-use App\Models\Seguridad\UsuariosPerfil;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+
+use App\Models\Seguridad\Usuarios;
+use App\Models\Seguridad\UsuariosPerfil;
+use App\Models\Seguridad\AccessRequest;
+use App\Models\Seguridad\RegistrationRequest;
+use App\Mail\NewAccessRequest;
+use App\Mail\AccessApproved;
 
 class AuthController extends Controller
 {
@@ -21,8 +27,8 @@ class AuthController extends Controller
         $request->validate([
             'usrp_nombre'   => 'required|string|max:50',
             'usrp_apellido' => 'required|string|max:50',
-            'usr_email'     => 'required|email|unique:Usuarios,usr_email|max:100',
-            'usr_user'      => 'required|string|unique:Usuarios,usr_user|max:30',
+            'usr_email'     => 'required|email|max:100|unique:Usuarios,usr_email',
+            'usr_user'      => 'required|string|max:30|unique:Usuarios,usr_user',
             'password'      => [
                 'required','string','confirmed','min:8',
                 'regex:/[A-Z]/','regex:/[0-9]/','regex:/[^A-Za-z0-9]/'
@@ -31,58 +37,105 @@ class AuthController extends Controller
             'password.regex' => 'La contraseña requiere mayúscula, número y carácter especial.'
         ]);
 
-        DB::beginTransaction();
-        try {
+        $email    = $request->usr_email;
+        $username = $request->usr_user;
+
+        // 1) Si ya existe usuario activo
+        if (Usuarios::where('usr_email', $email)->exists()) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Ya existe una cuenta con ese correo.',
+            ], 409);
+        }
+
+        // 2) Si ya hay solicitud pendiente
+        if (RegistrationRequest::where('email', $email)->where('approved', false)->exists()) {
+            return response()->json([
+                'status'  => true,
+                'message' => 'Ya hemos recibido tu solicitud. Te notificaremos cuando sea aprobada.',
+            ], 202);
+        }
+
+        // 3) Crear o actualizar la solicitud de registro
+        $rr = RegistrationRequest::updateOrCreate(
+            ['email' => $email],
+            [
+                'username' => $username,
+                'message'  => "{$request->usrp_nombre} {$request->usrp_apellido}",
+                'password' => Hash::make($request->password),
+                'approved' => false,
+            ]
+        );
+
+        // 4) Generar enlace firmado de aprobación
+        $approvalUrl = URL::temporarySignedRoute(
+            'auth.approveRegister',
+            now()->addDays(7),
+            ['id' => $rr->id]
+        );
+
+        // 5) Notificar al administrador
+        Mail::to(env('ADMIN_EMAIL'))
+            ->send(new NewAccessRequest(
+                $rr->email,
+                $rr->username,
+                $rr->message,
+                $approvalUrl
+            ));
+
+        // 6) Confirmación al usuario
+        Mail::raw(
+            "Hola {$request->usrp_nombre},\n\n" .
+            "Hemos recibido tu solicitud de registro. En breve te notificaremos cuando sea aprobada.",
+            fn($msg) => $msg->to($email)
+                ->subject('Solicitud de registro recibida')
+        );
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Solicitud registrada. Revisa tu correo para más detalles.',
+        ], 202);
+    }
+
+    public function approveRegister(Request $request, $id)
+    {
+        $rr = RegistrationRequest::findOrFail($id);
+
+        if ($rr->approved) {
+            return view('auth.access_already_approved', ['email' => $rr->email]);
+        }
+
+        DB::transaction(function() use ($rr, &$user) {
+            // 1) Marcar aprobado
+            $rr->approved = true;
+            $rr->save();
+
+            // 2) Crear el usuario en la tabla Usuarios
             $last = Usuarios::max('usr_id');
             $num  = $last ? ((int)$last + 1) : 1;
             $len  = $last ? strlen($last) : 8;
             $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
 
-            $usuario = Usuarios::create([
+            $user = Usuarios::create([
                 'usr_id'       => $uid,
-                'usr_email'    => $request->usr_email,
-                'usr_user'     => $request->usr_user,
-                'usr_password' => Hash::make($request->password),
+                'usr_email'    => $rr->email,
+                'usr_user'     => $rr->username,
+                'usr_password' => $rr->password,   // reutilizamos el hash
                 'usr_estado'   => 'Activo',
             ]);
 
             UsuariosPerfil::create([
                 'usrp_id'       => $uid,
                 'usr_id'        => $uid,
-                'usrp_nombre'   => $request->usrp_nombre,
-                'usrp_apellido' => $request->usrp_apellido,
-                // usrp_imagen queda NULL por ahora
+                'usrp_nombre'   => Str::before($rr->message ?? '', ' ') ?: $rr->username,
+                'usrp_apellido' => Str::after($rr->message ?? '', ' '),
             ]);
+        });
 
-            DB::commit();
+        Mail::to($rr->email)
+            ->send(new AccessApproved($rr->email));
 
-            $token = $usuario->createToken('api-token')->plainTextToken;
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Usuario registrado exitosamente',
-                'data'    => [
-                    'usuario' => [
-                        'usr_id'    => $usuario->usr_id,
-                        'usr_user'  => $usuario->usr_user,
-                        'usr_email' => $usuario->usr_email,
-                        'perfil'    => [
-                            'nombre'   => $request->usrp_nombre,
-                            'apellido' => $request->usrp_apellido,
-                        ],
-                    ],
-                    'token' => $token,
-                ],
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status'  => false,
-                'message' => 'Error al registrar el usuario',
-                'error'   => $e->getMessage(),
-            ], 500);
-        }
+        return view('auth.access_granted', ['email' => $rr->email]);
     }
 
     public function login(Request $request)
@@ -92,50 +145,50 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $usuario = Usuarios::where('usr_user', $request->usr_user)->first();
+        $user = Usuarios::where('usr_user', $request->usr_user)->first();
 
-        if (! $usuario || ! Hash::check($request->password, $usuario->usr_password)) {
+        if (! $user || ! Hash::check($request->password, $user->usr_password)) {
             return response()->json([
                 'status'  => false,
-                'message' => 'Usuario o contraseña incorrectos',
+                'message' => 'Usuario o contraseña incorrectos.',
             ], 401);
         }
 
-        if ($usuario->usr_estado !== 'Activo') {
+        if ($user->usr_estado !== 'Activo') {
             return response()->json([
                 'status'  => false,
-                'message' => 'Usuario inactivo, contacte al administrador',
+                'message' => 'Usuario inactivo. Contacta al administrador.',
             ], 403);
         }
 
-        $token = $usuario->createToken('api-token')->plainTextToken;
+        $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
             'status'  => true,
-            'message' => 'Inicio de sesión exitoso',
+            'message' => 'Inicio de sesión exitoso.',
             'usuario' => [
-                'usr_id'   => $usuario->usr_id,
-                'usr_user' => $usuario->usr_user,
+                'usr_id'   => $user->usr_id,
+                'usr_user' => $user->usr_user,
             ],
             'token'   => $token,
         ], 200);
     }
 
-    //──────────────────────────────────────────────
-    // Google OAuth
-    //──────────────────────────────────────────────
-
+    /**
+     * Inicia Google OAuth.
+     */
     public function redirectToGoogle()
     {
-        return Socialite::driver('google')
-                       ->stateless()
-                       ->redirect();
+        return Socialite::driver('google')->stateless()->redirect();
     }
 
+    /**
+     * Maneja el callback de Google OAuth.
+     */
     public function handleGoogleCallback()
     {
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            $gUser = Socialite::driver('google')->stateless()->user();
         } catch (\Exception $e) {
             return response()->json([
                 'status'  => false,
@@ -143,150 +196,150 @@ class AuthController extends Controller
             ], 500);
         }
 
-        // 1) Descargar avatar remoto
-        $avatarPath = null;
-        if ($url = $googleUser->getAvatar()) {
-            try {
-                $contents = Http::get($url)->body();
-                $filename = 'avatars/google_' . $googleUser->getId() . '.jpg';
-                Storage::disk('public')->put($filename, $contents);
-                $avatarPath = $filename;
-            } catch (\Exception $e) {
-                // si falla, dejamos NULL y seguimos
+        $email = $gUser->getEmail();
+
+        // 1) Si ya existe en Usuarios → login inmediato
+        if ($user = Usuarios::where('usr_email', $email)->first()) {
+            if ($user->usr_estado !== 'Activo') {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Usuario inactivo. Contacta al administrador.',
+                ], 403);
             }
+            Auth::login($user);
+            $token    = $user->createToken('auth_token')->plainTextToken;
+            $frontend = env('FRONTEND_URL');
+            return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
         }
 
-        // 2) Crear o buscar usuario
-        $usuario = Usuarios::firstOrCreate(
-            ['usr_email' => $googleUser->getEmail()],
-            [
-                'usr_id'       => Usuarios::max('usr_id')
-                                    ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), '0', STR_PAD_LEFT)
-                                    : '1',
-                'usr_user'     => explode('@', $googleUser->getEmail())[0],
-                'usr_password' => Hash::make(Str::random(16)),
-                'usr_estado'   => 'Activo',
-            ]
+        // 2) Si no existe → creamos o dejamos pendiente la AccessRequest
+        $ar = AccessRequest::firstOrCreate(
+            ['email' => $email],
+            ['username' => explode('@', $email)[0], 'approved' => false]
         );
 
-        // 3) Crear o actualizar perfil
-        $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
-        $nameParts = explode(' ', $googleUser->getName() ?? '');
-        $perfil->usrp_id       = $usuario->usr_id;
-        $perfil->usrp_nombre   = $nameParts[0] ?? '';
-        $perfil->usrp_apellido = count($nameParts) > 1
-                                 ? implode(' ', array_slice($nameParts, 1))
-                                 : '';
-        $perfil->usrp_imagen   = $avatarPath;  // guardamos solo la ruta
-        $perfil->save();
+        // Notificar al admin si es nueva
+        if ($ar->wasRecentlyCreated) {
+            $approvalUrl = URL::temporarySignedRoute(
+                'auth.approve',
+                now()->addDays(7),
+                ['id' => $ar->id]
+            );
+            Mail::to(env('ADMIN_EMAIL'))
+                ->send(new NewAccessRequest($email, $ar->username, null, $approvalUrl));
+        }
 
-        // 4) Token + redirect
-        $token    = $usuario->createToken('auth_token')->plainTextToken;
-        $frontend = env('FRONTEND_URL', 'http://localhost:5000');
+        // Si no aprobado → mostrar vista de espera
+        if (! $ar->approved) {
+            return view('auth.waiting', [
+                'email'   => $email,
+                'message' => 'Tu cuenta está pendiente de aprobación. Revisa tu correo.',
+            ]);
+        }
+
+        // 3) Si ya aprobado, el usuario fue creado al aprobar → login
+        $user = Usuarios::where('usr_email', $email)->firstOrFail();
+        Auth::login($user);
+        $token    = $user->createToken('auth_token')->plainTextToken;
+        $frontend = env('FRONTEND_URL');
         return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
     }
 
-    //──────────────────────────────────────────────
-    // Microsoft OAuth
-    //──────────────────────────────────────────────
-
+    /**
+     * Inicia Microsoft OAuth.
+     */
     public function redirectToMicrosoft()
     {
         return Socialite::driver('microsoft')
-                       ->stateless()
-                       ->scopes(['User.Read'])
-                       ->redirect();
+            ->stateless()
+            ->scopes(['User.Read'])
+            ->redirect();
     }
 
+    /**
+     * Maneja el callback de Microsoft OAuth.
+     */
     public function handleMicrosoftCallback()
     {
-        try {
-            $msUser = Socialite::driver('microsoft')->stateless()->user();
-        } catch (\Exception $e) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Error Microsoft OAuth: ' . $e->getMessage()
-            ], 500);
-        }
-
-        // 1) Traer foto binaria de Graph y guardar localmente
-        $avatarPath = null;
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $msUser->token,
-                'Accept'        => 'image/jpeg',
-            ])->get('https://graph.microsoft.com/v1.0/me/photo/$value');
-
-            if ($response->ok()) {
-                $contents = $response->body();
-                $filename = 'avatars/microsoft_' . $msUser->getId() . '.jpg';
-                Storage::disk('public')->put($filename, $contents);
-                $avatarPath = $filename;
-            }
-        } catch (\Exception $e) {
-            // sigue sin avatar
-        }
-
-        // 2) Crear o buscar usuario
-        $usuario = Usuarios::firstOrCreate(
-            ['usr_email' => $msUser->getEmail()],
-            [
-                'usr_id'       => Usuarios::max('usr_id')
-                                    ? str_pad(Usuarios::max('usr_id')+1, strlen(Usuarios::max('usr_id')), STR_PAD_LEFT)
-                                    : '1',
-                'usr_user'     => explode('@', $msUser->getEmail())[0],
-                'usr_password' => Hash::make(Str::random(16)),
-                'usr_estado'   => 'Activo',
-            ]
-        );
-
-        // 3) Crear o actualizar perfil
-        $perfil = UsuariosPerfil::firstOrNew(['usrp_id' => $usuario->usr_id]);
-        $nameParts = explode(' ', $msUser->getName() ?? '');
-        $perfil->usrp_id       = $usuario->usr_id;
-        $perfil->usrp_nombre   = $nameParts[0] ?? '';
-        $perfil->usrp_apellido = count($nameParts) > 1
-                                 ? implode(' ', array_slice($nameParts, 1))
-                                 : '';
-        $perfil->usrp_imagen   = $avatarPath;
-        $perfil->save();
-
-        // 4) Token + redirect
-        $token    = $usuario->createToken('auth_token')->plainTextToken;
-        $frontend = env('FRONTEND_URL', 'http://localhost:5000');
-        return Redirect::away("{$frontend}/auth/microsoft/callback?token={$token}");
+        // Reutiliza la lógica de Google
+        return $this->handleGoogleCallback();
     }
 
-    //──────────────────────────────────────────────
-    // Obtener datos del usuario autenticado
-    //──────────────────────────────────────────────
+    /**
+     * Aprueba una solicitud: crea el usuario y notifica al candidato.
+     */
+    public function approve(Request $request, $id)
+    {
+        $ar = AccessRequest::findOrFail($id);
 
+        if ($ar->approved) {
+            return view('auth.access_already_approved', ['email' => $ar->email]);
+        }
+
+        DB::transaction(function() use ($ar, &$user) {
+            // Marcar aprobado
+            $ar->approved = true;
+            $ar->save();
+
+            // Generar nuevo usr_id
+            $last = Usuarios::max('usr_id');
+            $num  = $last ? ((int)$last + 1) : 1;
+            $len  = $last ? strlen($last) : 8;
+            $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+
+            // Crear el usuario definitivo
+            $user = Usuarios::create([
+                'usr_id'       => $uid,
+                'usr_email'    => $ar->email,
+                'usr_user'     => $ar->username,
+                'usr_password' => Hash::make(Str::random(16)),
+                'usr_estado'   => 'Activo',
+            ]);
+
+            UsuariosPerfil::create([
+                'usrp_id'       => $uid,
+                'usr_id'        => $uid,
+                'usrp_nombre'   => Str::before($ar->message ?? '', ' ') ?: $ar->username,
+                'usrp_apellido' => Str::after($ar->message ?? '', ' '),
+            ]);
+        });
+
+        // Notificar al usuario aprobado
+        Mail::to($ar->email)
+            ->send(new AccessApproved($ar->email));
+
+        return view('auth.access_granted', ['email' => $ar->email]);
+    }
+
+    /**
+     * Devuelve info del usuario autenticado.
+     */
     public function getUserInfo(Request $request)
     {
-        $usuario = $request->user();
-        $perfil  = UsuariosPerfil::where('usrp_id', $usuario->usr_id)->first();
+        $user   = $request->user();
+        $perfil = UsuariosPerfil::where('usrp_id', $user->usr_id)->first();
 
         return response()->json([
             'status'  => true,
             'usuario' => [
-                'usr_id'   => $usuario->usr_id,
-                'usr_user' => $usuario->usr_user,
-                'usr_email'=> $usuario->usr_email,
-                'perfil'   => $perfil
-            ]
+                'usr_id'    => $user->usr_id,
+                'usr_user'  => $user->usr_user,
+                'usr_email' => $user->usr_email,
+                'perfil'    => $perfil,
+            ],
         ]);
     }
 
-    //──────────────────────────────────────────────
-    // Logout / revocar token
-    //──────────────────────────────────────────────
-
+    /**
+     * Cierra sesión revocando el token actual.
+     */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
+
         return response()->json([
             'status'  => true,
-            'message' => 'Sesión cerrada correctamente'
+            'message' => 'Sesión cerrada correctamente',
         ]);
     }
 }
