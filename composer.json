@@ -18,7 +18,9 @@
         "opcodesio/log-viewer": "^3.17",
         "socialiteproviders/manager": "^4.8",
         "socialiteproviders/microsoft": "^4.6",
-        "spatie/laravel-tail": "^4.5"
+        "spatie/laravel-tail": "^4.5",
+        "symfony/http-client": "^7.3",
+        "symfony/mailgun-mailer": "^7.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
