@@ -10,7 +10,8 @@ return [
         'http://localhost:5000',
         'https://tiendavir.netlify.app',
         'https://yamycorp.com',
-        'https://yamicorp2.areallc.tech'
+        'https://yamicorp2.areallc.tech',
+        'https://micro.yamycorp.com'
     ],
     'allowed_origins_patterns' => [],
     'allowed_headers'       => ['*'],

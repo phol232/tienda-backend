@@ -75,9 +75,8 @@ Route::get('boletas/payment/{paymentId}', [BoletasController::class,'buscarPorPa
 
 Route::apiResource('facturas', FacturasController::class);
 Route::post('facturacion/emitir', [FacturacionController::class, 'emitirBoleta']);
-Route::post('facturacion/emitir-frontend', [FacturacionController::class, 'emitirBoletaFrontend']);
 Route::post('facturacion/pdf', [FacturacionController::class, 'generarPdf']);
-Route::post('facturacion/emitir-replica-postman', [FacturacionController::class, 'emitirBoletaReplicaPostman']);
+
 
 Route::get('perfil/{id}', [UsuariosController::class, 'show']);
 Route::put('perfil/{id}', [UsuariosController::class, 'update']);
