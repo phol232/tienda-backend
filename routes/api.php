@@ -99,16 +99,17 @@ Route::get('auth/microsoft/redirect', [AuthController::class, 'redirectToMicroso
 Route::get('auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback'])
     ->name('auth.microsoft.callback');
 
-Route::get('auth/approve/{id}', [AuthController::class, 'approve'])
-    ->name('auth.approve')
-    ->middleware('signed');
-
-Route::get('auth/approve-register/{id}', [AuthController::class, 'approveRegister'])
-    ->name('auth.approveRegister')
-    ->middleware('signed');
 
 // Rutas protegidas por Sanctum
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout',   [AuthController::class, 'logout'])->name('logout');
     Route::get('user',      [AuthController::class, 'getUserInfo'])->name('user.info');
+});
+
+Route::get('/mail-check', function () {
+    Mail::raw('✅ Prueba desde web', function($m){
+        $m->to('ph2309.t@gmail.com')
+          ->subject('Prueba Mailgun Web');
+    });
+    return 'OK';
 });

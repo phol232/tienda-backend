@@ -7,21 +7,28 @@ use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register()
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot()
     {
-        if (config('app.env') === 'production') {
+        // Configuración para Cloudflare
+        if ($this->app->environment('production')) {
+            // Forzar HTTPS siempre
             URL::forceScheme('https');
+            URL::forceRootUrl(config('app.url'));
+            
+            // Configurar request para Cloudflare
+            $request = request();
+            $request->server->set('HTTPS', 'on');
+            $request->server->set('SERVER_PORT', 443);
+            
+            // Si viene de Cloudflare, usar la IP real
+            if ($request->hasHeader('CF-Connecting-IP')) {
+                $request->server->set('REMOTE_ADDR', $request->header('CF-Connecting-IP'));
+            }
         }
     }
 }

@@ -19,6 +19,7 @@ use App\Models\Seguridad\AccessRequest;
 use App\Models\Seguridad\RegistrationRequest;
 use App\Mail\NewAccessRequest;
 use App\Mail\AccessApproved;
+use App\Mail\RequestReceived;
 
 class AuthController extends Controller
 {
@@ -67,29 +68,34 @@ class AuthController extends Controller
             ]
         );
 
-        // 4) Generar enlace firmado de aprobación
+        // 4) Generar enlace firmado de aprobación (30 días)
         $approvalUrl = URL::temporarySignedRoute(
             'auth.approveRegister',
-            now()->addDays(7),
+            now()->addDays(30),
             ['id' => $rr->id]
         );
 
-        // 5) Notificar al administrador
-        Mail::to(env('ADMIN_EMAIL'))
-            ->send(new NewAccessRequest(
+        try {
+            // 5) Notificar al administrador
+            Mail::send(new NewAccessRequest(
                 $rr->email,
                 $rr->username,
                 $rr->message,
                 $approvalUrl
             ));
 
-        // 6) Confirmación al usuario
-        Mail::raw(
-            "Hola {$request->usrp_nombre},\n\n" .
-            "Hemos recibido tu solicitud de registro. En breve te notificaremos cuando sea aprobada.",
-            fn($msg) => $msg->to($email)
-                ->subject('Solicitud de registro recibida')
-        );
+            // 6) Confirmación inmediata al usuario
+            Mail::send(new RequestReceived($email, 'register'));
+
+        } catch (\Exception $e) {
+            \Log::error('Error enviando email de registro: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => false,
+                'message' => 'Error al enviar notificación por email. Contacta al administrador.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
 
         return response()->json([
             'status'  => true,
@@ -99,41 +105,70 @@ class AuthController extends Controller
 
     public function approveRegister(Request $request, $id)
     {
-        $rr = RegistrationRequest::findOrFail($id);
+        // Verificar firma de URL
+        if (! $request->hasValidSignature()) {
+            \Log::error('❌ FIRMA INVÁLIDA para approveRegister ID: ' . $id);
+            
+            return view('auth.link_expired', [
+                'message' => 'El enlace de aprobación ha expirado o es inválido.'
+            ]);
+        }
+
+        $rr = RegistrationRequest::find($id);
+
+        if (!$rr) {
+            return view('auth.not_found', [
+                'message' => 'Solicitud no encontrada.'
+            ]);
+        }
 
         if ($rr->approved) {
             return view('auth.access_already_approved', ['email' => $rr->email]);
         }
 
-        DB::transaction(function() use ($rr, &$user) {
-            // 1) Marcar aprobado
-            $rr->approved = true;
-            $rr->save();
+        $user = null;
 
-            // 2) Crear el usuario en la tabla Usuarios
-            $last = Usuarios::max('usr_id');
-            $num  = $last ? ((int)$last + 1) : 1;
-            $len  = $last ? strlen($last) : 8;
-            $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+        try {
+            DB::transaction(function() use ($rr, &$user) {
+                // 1) Marcar aprobado
+                $rr->approved = true;
+                $rr->save();
 
-            $user = Usuarios::create([
-                'usr_id'       => $uid,
-                'usr_email'    => $rr->email,
-                'usr_user'     => $rr->username,
-                'usr_password' => $rr->password,   // reutilizamos el hash
-                'usr_estado'   => 'Activo',
+                // 2) Crear el usuario en la tabla Usuarios
+                $last = Usuarios::max('usr_id');
+                $num  = $last ? ((int)$last + 1) : 1;
+                $len  = $last ? strlen($last) : 8;
+                $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+
+                $user = Usuarios::create([
+                    'usr_id'       => $uid,
+                    'usr_email'    => $rr->email,
+                    'usr_user'     => $rr->username,
+                    'usr_password' => $rr->password,
+                    'usr_estado'   => 'Activo',
+                ]);
+
+                UsuariosPerfil::create([
+                    'usrp_id'       => $uid,
+                    'usr_id'        => $uid,
+                    'usrp_nombre'   => Str::before($rr->message ?? '', ' ') ?: $rr->username,
+                    'usrp_apellido' => Str::after($rr->message ?? '', ' '),
+                ]);
+            });
+
+            \Log::info('✅ Usuario creado exitosamente: ' . $rr->email);
+
+            // Notificar al usuario aprobado
+            Mail::send(new AccessApproved($rr->email));
+
+        } catch (\Exception $e) {
+            \Log::error('Error aprobando registro: ' . $e->getMessage());
+
+            return view('auth.approval_error', [
+                'message' => 'Error al aprobar la cuenta. Contacta al administrador.',
+                'error' => $e->getMessage()
             ]);
-
-            UsuariosPerfil::create([
-                'usrp_id'       => $uid,
-                'usr_id'        => $uid,
-                'usrp_nombre'   => Str::before($rr->message ?? '', ' ') ?: $rr->username,
-                'usrp_apellido' => Str::after($rr->message ?? '', ' '),
-            ]);
-        });
-
-        Mail::to($rr->email)
-            ->send(new AccessApproved($rr->email));
+        }
 
         return view('auth.access_granted', ['email' => $rr->email]);
     }
@@ -197,52 +232,7 @@ class AuthController extends Controller
         }
 
         $email = $gUser->getEmail();
-
-        // 1) Si ya existe en Usuarios → login inmediato
-        if ($user = Usuarios::where('usr_email', $email)->first()) {
-            if ($user->usr_estado !== 'Activo') {
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'Usuario inactivo. Contacta al administrador.',
-                ], 403);
-            }
-            Auth::login($user);
-            $token    = $user->createToken('auth_token')->plainTextToken;
-            $frontend = env('FRONTEND_URL');
-            return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
-        }
-
-        // 2) Si no existe → creamos o dejamos pendiente la AccessRequest
-        $ar = AccessRequest::firstOrCreate(
-            ['email' => $email],
-            ['username' => explode('@', $email)[0], 'approved' => false]
-        );
-
-        // Notificar al admin si es nueva
-        if ($ar->wasRecentlyCreated) {
-            $approvalUrl = URL::temporarySignedRoute(
-                'auth.approve',
-                now()->addDays(7),
-                ['id' => $ar->id]
-            );
-            Mail::to(env('ADMIN_EMAIL'))
-                ->send(new NewAccessRequest($email, $ar->username, null, $approvalUrl));
-        }
-
-        // Si no aprobado → mostrar vista de espera
-        if (! $ar->approved) {
-            return view('auth.waiting', [
-                'email'   => $email,
-                'message' => 'Tu cuenta está pendiente de aprobación. Revisa tu correo.',
-            ]);
-        }
-
-        // 3) Si ya aprobado, el usuario fue creado al aprobar → login
-        $user = Usuarios::where('usr_email', $email)->firstOrFail();
-        Auth::login($user);
-        $token    = $user->createToken('auth_token')->plainTextToken;
-        $frontend = env('FRONTEND_URL');
-        return Redirect::away("{$frontend}/auth/google/callback?token={$token}");
+        return $this->handleOAuthCallback($email, 'google');
     }
 
     /**
@@ -261,52 +251,155 @@ class AuthController extends Controller
      */
     public function handleMicrosoftCallback()
     {
-        // Reutiliza la lógica de Google
-        return $this->handleGoogleCallback();
+        try {
+            $msUser = Socialite::driver('microsoft')->stateless()->user();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Error Microsoft OAuth: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $email = $msUser->getEmail();
+        return $this->handleOAuthCallback($email, 'microsoft');
     }
 
     /**
-     * Aprueba una solicitud: crea el usuario y notifica al candidato.
+     * Maneja el callback común para OAuth (Google y Microsoft).
+     */
+    private function handleOAuthCallback($email, $provider)
+    {
+        // 1) Si ya existe en Usuarios → login inmediato
+        if ($user = Usuarios::where('usr_email', $email)->first()) {
+            if ($user->usr_estado !== 'Activo') {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Usuario inactivo. Contacta al administrador.',
+                ], 403);
+            }
+            Auth::login($user);
+            $token    = $user->createToken('auth_token')->plainTextToken;
+            $frontend = env('FRONTEND_URL');
+            return Redirect::away("{$frontend}/auth/{$provider}/callback?token={$token}");
+        }
+
+        // 2) Si no existe → creamos o dejamos pendiente la AccessRequest
+        $ar = AccessRequest::firstOrCreate(
+            ['email' => $email],
+            ['username' => explode('@', $email)[0], 'approved' => false]
+        );
+
+        // Notificar al admin y usuario si es nueva
+        if ($ar->wasRecentlyCreated) {
+            try {
+                $approvalUrl = URL::temporarySignedRoute(
+                    'auth.approve',
+                    now()->addDays(30),
+                    ['id' => $ar->id]
+                );
+
+                // Email al admin
+                Mail::send(new NewAccessRequest(
+                    $email,
+                    $ar->username,
+                    null,
+                    $approvalUrl
+                ));
+
+                // Email al usuario
+                Mail::send(new RequestReceived($email, 'oauth'));
+
+            } catch (\Exception $e) {
+                \Log::error("Error enviando email {$provider}: " . $e->getMessage());
+            }
+        }
+
+        // Si no aprobado → mostrar vista de espera
+        if (! $ar->approved) {
+            return view('auth.waiting', [
+                'email'   => $email,
+                'message' => 'Tu cuenta está pendiente de aprobación. Revisa tu correo para más detalles.',
+            ]);
+        }
+
+        // 3) Si ya aprobado → login
+        $user = Usuarios::where('usr_email', $email)->firstOrFail();
+        Auth::login($user);
+        $token    = $user->createToken('auth_token')->plainTextToken;
+        $frontend = env('FRONTEND_URL');
+        return Redirect::away("{$frontend}/auth/{$provider}/callback?token={$token}");
+    }
+
+    /**
+     * Aprueba una solicitud OAuth: crea el usuario y notifica al candidato.
      */
     public function approve(Request $request, $id)
     {
-        $ar = AccessRequest::findOrFail($id);
+        // Verificar firma de URL
+        if (! $request->hasValidSignature()) {
+            \Log::error('❌ FIRMA INVÁLIDA para OAuth approve ID: ' . $id);
+            
+            return view('auth.link_expired', [
+                'message' => 'El enlace de aprobación ha expirado o es inválido.'
+            ]);
+        }
+
+        $ar = AccessRequest::find($id);
+
+        if (!$ar) {
+            return view('auth.not_found', [
+                'message' => 'Solicitud no encontrada.'
+            ]);
+        }
 
         if ($ar->approved) {
             return view('auth.access_already_approved', ['email' => $ar->email]);
         }
 
-        DB::transaction(function() use ($ar, &$user) {
-            // Marcar aprobado
-            $ar->approved = true;
-            $ar->save();
+        $user = null;
 
-            // Generar nuevo usr_id
-            $last = Usuarios::max('usr_id');
-            $num  = $last ? ((int)$last + 1) : 1;
-            $len  = $last ? strlen($last) : 8;
-            $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+        try {
+            DB::transaction(function() use ($ar, &$user) {
+                // Marcar aprobado
+                $ar->approved = true;
+                $ar->save();
 
-            // Crear el usuario definitivo
-            $user = Usuarios::create([
-                'usr_id'       => $uid,
-                'usr_email'    => $ar->email,
-                'usr_user'     => $ar->username,
-                'usr_password' => Hash::make(Str::random(16)),
-                'usr_estado'   => 'Activo',
+                // Generar nuevo usr_id
+                $last = Usuarios::max('usr_id');
+                $num  = $last ? ((int)$last + 1) : 1;
+                $len  = $last ? strlen($last) : 8;
+                $uid  = str_pad($num, $len, '0', STR_PAD_LEFT);
+
+                // Crear el usuario definitivo
+                $user = Usuarios::create([
+                    'usr_id'       => $uid,
+                    'usr_email'    => $ar->email,
+                    'usr_user'     => $ar->username,
+                    'usr_password' => Hash::make(Str::random(16)),
+                    'usr_estado'   => 'Activo',
+                ]);
+
+                UsuariosPerfil::create([
+                    'usrp_id'       => $uid,
+                    'usr_id'        => $uid,
+                    'usrp_nombre'   => Str::before($ar->message ?? '', ' ') ?: $ar->username,
+                    'usrp_apellido' => Str::after($ar->message ?? '', ' '),
+                ]);
+            });
+
+            \Log::info('✅ Usuario OAuth creado exitosamente: ' . $ar->email);
+
+            // Notificar al usuario aprobado
+            Mail::send(new AccessApproved($ar->email));
+
+        } catch (\Exception $e) {
+            \Log::error('Error aprobando OAuth: ' . $e->getMessage());
+
+            return view('auth.approval_error', [
+                'message' => 'Error al aprobar la cuenta. Contacta al administrador.',
+                'error' => $e->getMessage()
             ]);
-
-            UsuariosPerfil::create([
-                'usrp_id'       => $uid,
-                'usr_id'        => $uid,
-                'usrp_nombre'   => Str::before($ar->message ?? '', ' ') ?: $ar->username,
-                'usrp_apellido' => Str::after($ar->message ?? '', ' '),
-            ]);
-        });
-
-        // Notificar al usuario aprobado
-        Mail::to($ar->email)
-            ->send(new AccessApproved($ar->email));
+        }
 
         return view('auth.access_granted', ['email' => $ar->email]);
     }

@@ -69,4 +69,10 @@ return [
         'company_district'   => env('APISPERU_COMPANY_DISTRICT'),
         'company_ubigeo'     => env('APISPERU_COMPANY_UBIGEO'),
     ],
+    
+    'mailgun' => [
+        'domain'   => env('MAILGUN_DOMAIN'),
+        'secret'   => env('MAILGUN_SECRET'),
+        'endpoint' => env('MAILGUN_ENDPOINT', 'api.mailgun.net'),
+    ],
 ];

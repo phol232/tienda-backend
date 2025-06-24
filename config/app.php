@@ -153,5 +153,8 @@ return [
         App\Providers\RouteServiceProvider::class,
 
     ],
+    
+    'force_https' => env('FORCE_HTTPS', true),
+    'trusted_proxies' => env('TRUSTED_PROXIES', '*'),
 
 ];

@@ -26,7 +26,9 @@ class NewAccessRequest extends Mailable
     public function build()
     {
         return $this
-            ->subject("Solicitud de acceso: {$this->email}")
+            ->from('admin@mg.yamycorp.com', 'YamyCorp Admin')
+            ->to(env('ADMIN_EMAIL', 'admin@mg.yamycorp.com'))
+            ->subject("🔔 Nueva solicitud de acceso: {$this->email}")
             ->view('emails.new_access_request')
             ->with([
                 'email'       => $this->email,
