@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Seguridad\AuthController;
+use App\Http\Controllers\Reportes\ReportesController;
 use App\Http\Controllers\Clientes\Categoria_ClientesController;
 use App\Http\Controllers\Clientes\ClientesController;
 use App\Http\Controllers\Productos_Proveedores\Categoria_ProveedoresController;
@@ -112,3 +113,6 @@ Route::get('/mail-check', function () {
     });
     return 'OK';
 });
+
+Route::get('/reportes/top-productos', [ReportesController::class, 'topProductos']);
+Route::get('/reportes/ventas-por-categoria', [ReportesController::class, 'ventasPorCategoria']);

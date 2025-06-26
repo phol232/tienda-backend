@@ -156,5 +156,5 @@ return [
     
     'force_https' => env('FORCE_HTTPS', true),
     'trusted_proxies' => env('TRUSTED_PROXIES', '*'),
-
+    'microservice_url' => env('MICROSERVICE_URL', 'http://127.0.0.1:3000'),
 ];
