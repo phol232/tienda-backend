@@ -20,6 +20,7 @@ use App\Http\Controllers\Ventas_Pagos\FacturacionController;
 use App\Http\Controllers\Ventas_Pagos\FacturasController;
 use App\Http\Controllers\Ventas_Pagos\MercadoPagoController;
 use App\Http\Controllers\Ventas_Pagos\MetodosPagoController;
+
 use App\Http\Controllers\Pedidos\PedidosController;
 
 /*
@@ -33,6 +34,7 @@ Route::apiResource('categorias', CategoriaController::class);
 Route::apiResource('categorias-clientes', Categoria_ClientesController::class);
 Route::apiResource('categorias-proveedores', Categoria_ProveedoresController::class);
 Route::apiResource('proveedores', ProveedoresController::class);
+Route::get('/clientes/search', [ClientesController::class, 'search'])->name('clientes.search');
 Route::apiResource('clientes', ClientesController::class);
 
 Route::get('productos/create', [ProductosController::class, 'create'])

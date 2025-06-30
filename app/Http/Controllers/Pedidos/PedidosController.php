@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Validation\Rule;
 use App\Models\Productos_Proveedores\Productos;
+use Carbon\Carbon;
 
 class PedidosController extends Controller
 {
@@ -75,16 +76,20 @@ class PedidosController extends Controller
         // 2) Convertir el array de items a JSON
         $itemsJson = json_encode($request->input('items'));
 
+        // Obtener la fecha y hora actual en Lima
+        $fechaLima = Carbon::now('America/Lima')->toDateTimeString();
+
         try {
             // 3) Llamar al procedimiento almacenado sp_insertar_pedido
             $resultado = DB::select(
-                'CALL sp_insertar_pedido(?, ?, ?, ?, ?)',
+                'CALL sp_insertar_pedido(?, ?, ?, ?, ?, ?)',
                 [
                     $request->input('cliente_nombre'),
                     $request->input('usr_id'),
                     $request->input('forma_entrega', null),
                     $request->input('notas', null),
-                    $itemsJson
+                    $itemsJson,
+                    $fechaLima
                 ]
             );
 
@@ -131,17 +136,20 @@ class PedidosController extends Controller
         // 2) Convertir items a JSON
         $itemsJson = json_encode($request->input('items'));
 
+        $fechaLima = Carbon::now('America/Lima')->toDateTimeString();
+
         try {
             // 3) Llamar al procedimiento sp_actualizar_pedido
             DB::statement(
-                'CALL sp_actualizar_pedido(?, ?, ?, ?, ?, ?)',
+                'CALL sp_actualizar_pedido(?, ?, ?, ?, ?, ?, ?)',
                 [
                     $ped_id,
                     $request->input('cliente_nombre'),
                     $request->input('usr_id'),
                     $request->input('forma_entrega', null),
                     $request->input('notas', null),
-                    $itemsJson
+                    $itemsJson,
+                    $fechaLima
                 ]
             );
 

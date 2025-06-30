@@ -123,32 +123,42 @@ class BoletasController extends Controller
         }
     }
 
-    // Cancelar boleta y devolver stock
     public function cancelar($id)
     {
-        DB::beginTransaction();
         try {
-            $boleta = Boletas::with('pedido.detalles.producto')->findOrFail($id);
+            // Usar el procedimiento almacenado que maneja toda la lógica
+            $resultado = DB::select('CALL sp_cancelar_boleta_completo(?)', [$id]);
 
-            if ($boleta->boleta_estado === 'Cancelado') {
-                return response()->json(['message' => 'La boleta ya está cancelada.'], 400);
+            if (empty($resultado)) {
+                return response()->json([
+                    'message' => 'No se pudo procesar la cancelación de la boleta.'
+                ], 500);
             }
 
-            foreach ($boleta->pedido->detalles as $detalle) {
-                $detalle->producto->increment('pro_stock', $detalle->det_cantidad);
-            }
+            $data = $resultado[0];
 
-            $boleta->update(['boleta_estado' => 'Cancelado']);
-            DB::commit();
-
-            return response()->json(['message' => 'Boleta cancelada correctamente', 'boleta_id' => $id], 200);
+            return response()->json([
+                'message' => 'Boleta cancelada correctamente',
+                'boleta_id' => $data->boleta_cancelada_id,
+                'pedido_anulado_id' => $data->pedido_anulado_id,
+                'nuevo_pedido_id' => $data->nuevo_pedido_id,
+                'cliente_nombre' => $data->cliente_nombre
+            ], 200);
 
         } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Error al cancelar la boleta.', 'error' => $e->getMessage()], 500);
+
+            \Log::error('Error al cancelar boleta: ' . $e->getMessage(), [
+                'boleta_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 'Error al cancelar la boleta.',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
-
+   
     public function emitirSunatXml($id)
     {
         try {
@@ -246,7 +256,6 @@ class BoletasController extends Controller
             ->header('Content-Type', 'application/pdf')
             ->header('Content-Disposition', "attachment; filename=\"{$fileName}.pdf\"");
     }
-
 
     // Buscar boleta por payment_id
     public function buscarPorPaymentId($paymentId)

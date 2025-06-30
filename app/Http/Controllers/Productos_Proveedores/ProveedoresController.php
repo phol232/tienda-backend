@@ -13,12 +13,13 @@ class ProveedoresController extends Controller
 {
     public function index()
     {
-        return response()->json(Proveedores::all());
+        $proveedores = Proveedores::with('categorias')->get();
+        return response()->json($proveedores);
     }
 
     public function show(string $id)
     {
-        $prov = Proveedores::findOrFail($id);
+        $prov = Proveedores::with('categorias')->findOrFail($id);
         return response()->json($prov);
     }
 

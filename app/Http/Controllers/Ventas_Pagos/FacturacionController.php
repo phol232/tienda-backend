@@ -12,12 +12,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class FacturacionController extends Controller
 {
-    /**
-     * Crea la boleta, descuenta stock y registra métodos de pago.
-     */
     public function emitirBoleta(Request $req)
     {
         $data = $req->validate([
@@ -40,6 +38,8 @@ class FacturacionController extends Controller
             'pedido.detalles.*.producto.pro_id'         => 'required|string',
             'pedido.detalles.*.producto.pro_nombre'     => 'required|string',
         ]);
+
+        $boletaFechaLima = Carbon::now('America/Lima')->format('Y-m-d H:i:s');
 
         Log::info('[emitirBoleta] Iniciando emisión', ['numero' => $data['boleta_numero']]);
 
@@ -71,7 +71,7 @@ class FacturacionController extends Controller
             $boleta = Boletas::create([
                 'boleta_id'        => Str::uuid()->toString(),
                 'boleta_numero'    => $data['boleta_numero'],
-                'boleta_fecha'     => $data['boleta_fecha'],
+                'boleta_fecha'     => $boletaFechaLima,
                 'boleta_subtotal'  => $data['boleta_subtotal'],
                 'boleta_impuestos' => $data['boleta_impuestos'],
                 'boleta_descuento' => $data['boleta_descuento'] ?? 0,
@@ -83,6 +83,11 @@ class FacturacionController extends Controller
 
             // 4. Registrar métodos de pago
             foreach ($data['metodos_pago'] as $mp) {
+                // Usar fecha actual de Lima directamente
+                $fechaPagoLima = isset($mp['fecha_pago'])
+                    ? Carbon::now('America/Lima')->format('Y-m-d H:i:s')
+                    : Carbon::now('America/Lima')->format('Y-m-d H:i:s');
+
                 $metodo = MetodosPago::firstOrCreate([
                     'met_nombre' => $mp['met_nombre']
                 ]);
@@ -92,7 +97,7 @@ class FacturacionController extends Controller
                     'met_id'         => $metodo->met_id,
                     'monto'          => $mp['monto']      ?? $data['boleta_total'],
                     'referencia'     => $mp['nota_pago']  ?? null,
-                    'fecha_registro' => $mp['fecha_pago'] ?? now(),
+                    'fecha_registro' => $fechaPagoLima,
                 ]);
             }
 
